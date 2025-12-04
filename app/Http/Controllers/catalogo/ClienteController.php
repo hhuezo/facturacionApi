@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\catalogo\Cliente;
 use App\Models\catalogo\TipoContribuyente;
 use App\Models\catalogo\TipoPersona;
+use App\Models\Empresa;
 use App\Models\mh\ActividadEconomica;
 use App\Models\mh\Departamento;
 use App\Models\mh\Municipio;
@@ -39,9 +40,14 @@ class ClienteController extends Controller
 
     public function create(Request $request)
     {
+
+        $empresas = Empresa::select('id','nombre')
+        ->where('eliminado','N')->whereIn('id',[$request->idEmpresa])->get();
+
         return response()->json([
             'success' => true,
             'data' => [
+                'empresas' => $empresas,
                 'tiposDocumento'       => TipoDocumentoIdentidad::get(),
                 'actividadesEconomicas' => ActividadEconomica::select('id','nombreActividad as nombre')->get(),
                 'tiposPersona'         => TipoPersona::get(),
