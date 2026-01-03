@@ -21,3 +21,4 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 Route::get('cliente', [ClienteController::class, 'index']);
 Route::get('cliente/create', [ClienteController::class, 'create']);
+Route::post('cliente', [ClienteController::class, 'store']);

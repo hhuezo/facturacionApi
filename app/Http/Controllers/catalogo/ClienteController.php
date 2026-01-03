@@ -12,7 +12,9 @@ use App\Models\mh\Departamento;
 use App\Models\mh\Municipio;
 use App\Models\mh\Pais;
 use App\Models\mh\TipoDocumentoIdentidad;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ClienteController extends Controller
 {
@@ -41,15 +43,15 @@ class ClienteController extends Controller
     public function create(Request $request)
     {
 
-        $empresas = Empresa::select('id','nombre')
-        ->where('eliminado','N')->whereIn('id',[$request->idEmpresa])->get();
+        $empresas = Empresa::select('id', 'nombre')
+            ->where('eliminado', 'N')->whereIn('id', [$request->idEmpresa])->get();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'empresas' => $empresas,
                 'tiposDocumento'       => TipoDocumentoIdentidad::get(),
-                'actividadesEconomicas' => ActividadEconomica::select('id','nombreActividad as nombre')->get(),
+                'actividadesEconomicas' => ActividadEconomica::select('id', 'nombreActividad as nombre')->get(),
                 'tiposPersona'         => TipoPersona::get(),
                 'tiposContribuyente'   => TipoContribuyente::get(),
                 'paises'               => Pais::get(),
@@ -62,8 +64,93 @@ class ClienteController extends Controller
 
     public function store(Request $request)
     {
-        //
+        Log::info('Cliente store - Request recibido', [
+            'headers' => $request->headers->all(),
+            'body'    => $request->all(),
+            'ip'      => $request->ip(),
+            'method'  => $request->method(),
+            'url'     => $request->fullUrl(),
+        ]);
+
+
+        $request->validate(
+            [
+                'idEmpresa'                 => 'required|integer',
+                'nombreCliente'             => 'required|string|max:1500',
+                'idTipoDocumentoIdentidad'  => 'required|integer',
+                'numeroDocumento'           => 'required|string|max:250',
+                'idActividadEconomica'      => 'required|integer',
+                'idTipoPersona'             => 'required|integer',
+                'idTipoContribuyente'       => 'required|integer',
+                'esExento'                  => 'required|in:S,N',
+                'correo'                    => 'nullable|email|max:150',
+                'telefono'                  => 'nullable|string|max:12',
+            ],
+            [
+                'idEmpresa.required'                => 'La empresa es obligatoria.',
+                'idEmpresa.integer'                 => 'La empresa seleccionada no es válida.',
+
+                'nombreCliente.required'            => 'El nombre del cliente es obligatorio.',
+                'nombreCliente.string'              => 'El nombre del cliente debe ser texto.',
+                'nombreCliente.max'                 => 'El nombre del cliente no puede exceder 1500 caracteres.',
+
+                'idTipoDocumentoIdentidad.required' => 'Debe seleccionar un tipo de documento.',
+                'idTipoDocumentoIdentidad.integer'  => 'El tipo de documento seleccionado no es válido.',
+
+                'numeroDocumento.required'          => 'El número de documento es obligatorio.',
+                'numeroDocumento.string'            => 'El número de documento debe ser texto.',
+                'numeroDocumento.max'               => 'El número de documento no puede exceder 250 caracteres.',
+
+                'idActividadEconomica.required'     => 'Debe seleccionar una actividad económica.',
+                'idActividadEconomica.integer'      => 'La actividad económica seleccionada no es válida.',
+
+                'idTipoPersona.required'            => 'Debe seleccionar el tipo de persona.',
+                'idTipoPersona.integer'             => 'El tipo de persona seleccionado no es válido.',
+
+                'idTipoContribuyente.required'      => 'Debe seleccionar el tipo de contribuyente.',
+                'idTipoContribuyente.integer'       => 'El tipo de contribuyente seleccionado no es válido.',
+
+                'esExento.required'                 => 'Debe indicar si el cliente es exento.',
+                'esExento.in'                       => 'El valor de exento debe ser S o N.',
+
+                'correo.email'                      => 'El correo electrónico no tiene un formato válido.',
+                'correo.max'                        => 'El correo electrónico no puede exceder 150 caracteres.',
+
+                'telefono.max'                      => 'El teléfono no puede exceder 12 caracteres.',
+            ]
+        );
+
+
+        $cliente = new Cliente();
+        $cliente->idEmpresa                = $request->idEmpresa;
+        $cliente->nombreCliente            = $request->nombreCliente;
+        $cliente->idTipoDocumentoIdentidad = $request->idTipoDocumentoIdentidad;
+        $cliente->numeroDocumento          = $request->numeroDocumento;
+        $cliente->idActividadEconomica     = $request->idActividadEconomica;
+        $cliente->idTipoPersona            = $request->idTipoPersona;
+        $cliente->idTipoContribuyente      = $request->idTipoContribuyente;
+        $cliente->esExento                 = $request->esExento;
+        $cliente->correo                   = $request->correo;
+        $cliente->telefono                 = $request->telefono;
+
+        $cliente->idDepartamento                   = $request->idDepartamento ?? null;
+        $cliente->idMunicipio                      = $request->idMunicipio ?? null;
+        $cliente->direccion                        = $request->direccion ?? null;
+
+        $cliente->clienteFrecuente   = 'N';
+        $cliente->eliminado          = 'N';
+        $cliente->fechaRegistro      = Carbon::now();
+        //$cliente->idUsuarioRegistra  = auth()->id();
+
+        $cliente->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cliente registrado correctamente.',
+            'data'    => $cliente
+        ], 201);
     }
+
 
     public function show($id)
     {
