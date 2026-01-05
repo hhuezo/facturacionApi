@@ -2,6 +2,7 @@
 
 namespace App\Models\catalogo;
 
+use App\Models\mh\UnidadMedida;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 

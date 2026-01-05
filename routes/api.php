@@ -29,3 +29,4 @@ Route::put('cliente/{id}', [ClienteController::class, 'update']);
 
 Route::get('factura', [FacturaController::class, 'index']);
 Route::get('factura/create', [FacturaController::class, 'create']);
+Route::post('factura', [FacturaController::class, 'store']);

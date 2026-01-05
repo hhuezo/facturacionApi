@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Models\catalogo\Cliente;
-use App\Models\catalogo\TipoDocumentoTributario;
+use App\Models\mh\TipoDocumentoTributario;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 

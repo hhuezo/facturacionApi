@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Models\catalogo;
+namespace App\Models\mh;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +9,7 @@ class TipoDocumentoTributario extends Model
 {
     use HasFactory;
 
-    protected $table = 'mh_tipo_documento_tributario';
+     protected $table = 'mh_tipo_documento_tributario';
 
     protected $primaryKey = 'id';
 

@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Models\catalogo;
+namespace App\Models\mh;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class TipoPlazo extends Model
+class CondicionVenta extends Model
 {
     use HasFactory;
 
-    protected $table = 'mh_tipo_plazos';
+    protected $table = 'mh_condicion_venta';
 
     protected $primaryKey = 'id';
 

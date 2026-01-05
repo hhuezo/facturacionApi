@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Models\catalogo;
+namespace App\Models\mh;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 class UnidadMedida extends Model
 {
     use HasFactory;
-
     protected $table = 'mh_unidad_medida';
 
     protected $primaryKey = 'id';

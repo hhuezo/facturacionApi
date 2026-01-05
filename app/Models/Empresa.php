@@ -9,16 +9,12 @@ class Empresa extends Model
 {
     use HasFactory;
 
-    // 🔹 Nombre de la tabla
     protected $table = 'general_datos_empresa';
 
-    // 🔹 Clave primaria
     protected $primaryKey = 'id';
 
-    // 🔹 La tabla NO usa timestamps de Laravel (created_at / updated_at)
     public $timestamps = false;
 
-    // 🔹 Campos asignables
     protected $fillable = [
         'idPersoneria',
         'numeroIVA',
