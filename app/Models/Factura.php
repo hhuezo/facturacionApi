@@ -1,0 +1,152 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\catalogo\Cliente;
+use App\Models\catalogo\TipoDocumentoTributario;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Factura extends Model
+{
+    use HasFactory;
+
+    protected $table = 'facturacion_encabezado';
+
+    protected $primaryKey = 'id';
+
+    public $incrementing = true;
+
+    protected $keyType = 'int';
+
+    public $timestamps = false; // la tabla NO usa created_at / updated_at
+
+    protected $fillable = [
+
+        'idEmpresa',
+        'idSucursal',
+        'idCaja',
+        'idTipoDte',
+        'versionJson',
+        'idAmbiente',
+        'idTipoFacturacion',
+        'idTipoTransmision',
+        'idTipoContingencia',
+        'motivoContingencia',
+        'fechaHoraEmision',
+        'idCliente',
+        'codigoGeneracion',
+        'idNumeroControl',
+        'numeroControl',
+        'observaciones',
+
+        'totalNoSujeta',
+        'totalExenta',
+        'totalGravada',
+        'descuentoNoSujeto',
+        'descuentoGravada',
+        'descuentoExenta',
+        'porcentajeDescuento',
+        'totalDescuento',
+        'totalIVA',
+        'subTotal',
+        'ivaPercibido1',
+        'ivaRetenido1',
+        'retencionRenta',
+        'seguros',
+        'fletes',
+        'montoTotalOperacion',
+        'totalNoGravado',
+        'totalPagar',
+
+        'idTipoPago',
+        'idCondicionVenta',
+        'idPlazo',
+        'diasCredito',
+        'totalCobrado',
+        'totalVuelto',
+        'idPos',
+        'numeroAutorizacionTC',
+        'numeroCheque',
+        'idBancoCheque',
+        'observacionesPago',
+
+        'idDocumentoRelacionado',
+        'estadoHacienda',
+        'selloHacienda',
+        'fechaRecibidoHacienda',
+        'selloInvalidacion',
+        'idInvalidacion',
+        'fechaInvalidacion',
+
+        'idEventoContingencia',
+        'idRecinto',
+        'idRegimen',
+        'idPaisExportacion',
+        'idIncoterms',
+        'idTipoItem',
+
+        'idUsuarioRegistraOrden',
+        'fechaRegistraOrden',
+        'idUsuarioTransmiteDte',
+        'fechaTransmitenDte',
+
+        'eliminado',
+        'fechaEliminacion',
+        'idUsuarioElimina',
+        'motivoEliminacion',
+
+        'idPuntoVenta',
+        'idTipoOperacionRenta',
+        'idTipoIngresoRenta',
+        'idClasificacionRenta',
+        'idSectorRenta',
+        'idTipoCostoGastoRenta',
+        'numeroAnexo',
+    ];
+
+    protected $casts = [
+
+        'fechaHoraEmision'        => 'datetime',
+        'fechaRecibidoHacienda'  => 'datetime',
+        'fechaInvalidacion'      => 'datetime',
+        'fechaRegistraOrden'     => 'datetime',
+        'fechaTransmitenDte'     => 'datetime',
+        'fechaEliminacion'       => 'datetime',
+
+        'totalNoSujeta'          => 'decimal:4',
+        'totalExenta'            => 'decimal:4',
+        'totalGravada'           => 'decimal:4',
+        'totalDescuento'         => 'decimal:4',
+        'totalIVA'               => 'decimal:4',
+        'subTotal'               => 'decimal:4',
+        'totalPagar'             => 'decimal:4',
+        'totalCobrado'           => 'decimal:4',
+        'totalVuelto'            => 'decimal:4',
+    ];
+
+    public function cliente()
+    {
+        return $this->belongsTo(Cliente::class, 'idCliente');
+    }
+
+    public function empresa()
+    {
+        return $this->belongsTo(Empresa::class, 'idEmpresa');
+    }
+
+    public function sucursal()
+    {
+        return $this->belongsTo(EmpresaSucursal::class, 'idSucursal');
+    }
+
+    public function tipoDocumentoTributario()
+    {
+        return $this->belongsTo(TipoDocumentoTributario::class, 'idTipoDte');
+    }
+
+    public function usuario()
+    {
+        return $this->belongsTo(Usuario::class, 'idUsuarioRegistraOrden');
+    }
+}

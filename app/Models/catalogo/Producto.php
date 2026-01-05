@@ -62,4 +62,10 @@ class Producto extends Model
         'eliminado' => 'string',
         'mostrarEnInventario' => 'string',
     ];
+
+
+        public function unidadMedida()
+    {
+        return $this->belongsTo(UnidadMedida::class, 'idUnidadMedida');
+    }
 }
