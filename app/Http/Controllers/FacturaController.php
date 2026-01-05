@@ -5,13 +5,16 @@ namespace App\Http\Controllers;
 use App\Models\catalogo\Cliente;
 use App\Models\catalogo\Producto;
 use App\Models\Empresa;
+use App\Models\EmpresaSucursal;
 use App\Models\Factura;
+use App\Models\FacturaDetalle;
 use App\Models\mh\CondicionVenta;
 use App\Models\mh\TipoDocumentoTributario;
 use App\Models\mh\TipoPlazo;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FacturaController extends Controller
 {
@@ -95,129 +98,122 @@ class FacturaController extends Controller
 
     public function store(Request $request)
     {
+
         DB::beginTransaction();
 
         try {
 
-            // -----------------------------
-            // 1️⃣ VALIDACIONES BÁSICAS
-            // -----------------------------
-            $request->validate([
-                'idEmpresa'        => 'required|integer',
-                'idSucursal'       => 'required|integer',
-                'idTipoDte'        => 'required|integer',
-                'idCliente'        => 'required|integer',
-                'idCondicionVenta' => 'required|integer',
-                'items'            => 'required|array|min:1',
-                'items.*.idProducto'      => 'required|integer',
-                'items.*.cantidad'        => 'required|numeric|min:0.0001',
-                'items.*.precioUnitario'  => 'required|numeric|min:0',
-            ]);
 
-            // -----------------------------
-            // 2️⃣ CÁLCULOS GENERALES
-            // -----------------------------
-            $subTotal = 0;
-            $totalIVA = 0;
-            $totalDescuento = 0;
+            $sucursal = EmpresaSucursal::where('idEmpresa', $request->idEmpresa)->first();
 
-            foreach ($request->items as $item) {
-                $lineaSub = $item['cantidad'] * $item['precioUnitario'];
-                $lineaDesc = $item['descuento'] ?? 0;
+            $factura = new Factura();
 
-                $subTotal += $lineaSub;
-                $totalDescuento += $lineaDesc;
-            }
+            $factura->idEmpresa        = $request->idEmpresa;
+            $factura->idSucursal       = $sucursal->id;
+            $factura->idTipoDte        = $request->idTipoDte;
+            $factura->idCliente        = $request->idCliente;
+            $factura->fechaHoraEmision = Carbon::now();
 
-            $baseGravada = $subTotal - $totalDescuento;
-            $totalIVA = $baseGravada * 0.13;
-            $totalPagar = $baseGravada + $totalIVA;
+            $factura->subTotal       = $request->subTotal;
+            $factura->totalDescuento = $request->totalDescuento ?? 0;
+            $factura->totalGravada   = $request->totalGravada;
+            $factura->totalIVA       = $request->totalIVA;
+            $factura->totalPagar     = $request->totalPagar;
 
-            // -----------------------------
-            // 3️⃣ INSERTAR ENCABEZADO
-            // -----------------------------
-            $encabezadoId = DB::table('facturacion_encabezado')->insertGetId([
-                'idEmpresa'        => $request->idEmpresa,
-                'idSucursal'       => $request->idSucursal,
-                'idTipoDte'        => $request->idTipoDte,
-                'fechaHoraEmision' => Carbon::now(),
-                'idCliente'        => $request->idCliente,
+            $factura->idCondicionVenta = $request->idCondicionVenta;
+            $factura->idPlazo          = $request->idPlazo ?? null;
+            $factura->diasCredito      = $request->diasCredito ?? null;
 
-                'subTotal'         => $subTotal,
-                'totalDescuento'   => $totalDescuento,
-                'totalGravada'     => $baseGravada,
-                'totalIVA'         => $totalIVA,
-                'totalPagar'       => $totalPagar,
+            $factura->eliminado = 'N';
+            $factura->fechaRegistraOrden = Carbon::now();
+            $factura->idUsuarioRegistraOrden = auth()->id();
 
-                'idCondicionVenta' => $request->idCondicionVenta,
-                'idPlazo'          => $request->idPlazo ?? null,
-                'diasCredito'      => $request->diasCredito ?? null,
+            $factura->save();
 
-                'eliminado'        => 'N',
-                'fechaRegistraOrden' => Carbon::now(),
-            ]);
 
-            // -----------------------------
-            // 4️⃣ INSERTAR DETALLE
-            // -----------------------------
-            foreach ($request->items as $item) {
 
-                $cantidad = $item['cantidad'];
-                $precio   = $item['precioUnitario'];
-                $descuento = $item['descuento'] ?? 0;
+            foreach ($request->items as $index => $item) {
 
-                $gravadas = ($cantidad * $precio) - $descuento;
-                $ivaLinea = $gravadas * 0.13;
+                $producto = Producto::find($item['idProducto']);
 
-                DB::table('facturacion_encabezado_detalle')->insert([
-                    'idEncabezado'        => $encabezadoId,
-                    'idProducto'          => $item['idProducto'],
-                    'idTipoItem'          => $item['idTipoItem'] ?? null,
-                    'idUnidadMedida'      => $item['idUnidadMedida'] ?? null,
+                $detalle = new FacturaDetalle();
 
-                    'cantidad'            => $cantidad,
-                    'precioUnitario'      => $precio,
-                    'porcentajeDescuento' => $item['porcentajeDescuento'] ?? 0,
-                    'descuento'            => $descuento,
+                $detalle->idEncabezado   = $factura->id;
+                $detalle->idProducto     = $item['idProducto'];
+                $detalle->idTipoItem     = $producto->idTipoItem;
+                $detalle->idUnidadMedida = $item['idUnidadMedida'];
 
-                    'excentas'            => 0,
-                    'gravadas'            => $gravadas,
-                    'iva'                 => $ivaLinea,
+                $detalle->cantidad       = $item['cantidad'];
+                $detalle->precioUnitario = $item['precioUnitario'];
 
-                    'idInventario'        => $item['idInventario'] ?? null,
-                    'motivoCambioPrecio'  => $item['motivoCambioPrecio'] ?? null,
-                ]);
+                $detalle->porcentajeDescuento = $item['porcentajeDescuento'] ?? 0;
+                $detalle->descuento            = $item['descuento'] ?? 0;
+
+                $detalle->gravadas = $item['gravadas'];
+                $detalle->excentas = $item['excentas'] ?? 0;
+                $detalle->iva      = $item['iva'];
+
+                $detalle->motivoCambioPrecio = $item['motivoCambioPrecio'] ?? null;
+
+                $detalle->save();
             }
 
             DB::commit();
 
+
             return response()->json([
                 'success' => true,
-                'message' => 'Factura creada correctamente',
-                'idFactura' => $encabezadoId
+                'idFactura' => $factura->id
             ], 201);
         } catch (\Throwable $e) {
 
             DB::rollBack();
 
+            // ❌ LOG DE ERROR COMPLETO
+            Log::error('FACTURA STORE - ERROR', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+                'trace'   => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear la factura',
+                'message' => 'Error al crear factura',
                 'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * Display the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function show($id)
+    public function emitir($id)
     {
-        //
+        try {
+
+            $factura = Factura::find($id);
+
+            if (!$factura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Factura no encontrada'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Factura enviada a Hacienda correctamente',
+                'idFactura' => $factura->id
+            ], 200);
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al emitir factura',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
+
 
     /**
      * Show the form for editing the specified resource.

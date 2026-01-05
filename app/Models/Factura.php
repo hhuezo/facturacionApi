@@ -19,7 +19,7 @@ class Factura extends Model
 
     protected $keyType = 'int';
 
-    public $timestamps = false; // la tabla NO usa created_at / updated_at
+    public $timestamps = false;
 
     protected $fillable = [
 
