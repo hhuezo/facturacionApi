@@ -149,4 +149,9 @@ class Factura extends Model
     {
         return $this->belongsTo(Usuario::class, 'idUsuarioRegistraOrden');
     }
+
+    public function detalles()
+    {
+        return $this->hasMany(FacturaDetalle::class, 'idEncabezado');
+    }
 }
