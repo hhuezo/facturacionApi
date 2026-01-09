@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\catalogo\Cliente;
 use App\Models\catalogo\Producto;
 use App\Models\Empresa;
+use App\Models\EmpresaActividadEconomica;
 use App\Models\EmpresaSucursal;
 use App\Models\Factura;
 use App\Models\FacturaDetalle;
 use App\Models\mh\CondicionVenta;
 use App\Models\mh\TipoDocumentoTributario;
 use App\Models\mh\TipoPlazo;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +26,7 @@ class FacturaController extends Controller
 
         $facturas = Factura::with(['cliente', 'empresa', 'tipoDocumentoTributario', 'usuario'])
             ->where('idEmpresa', $idEmpresa)
+            ->orderBy('facturacion_encabezado.id', 'desc')
             ->get()
             ->toArray();
 
@@ -214,36 +217,207 @@ class FacturaController extends Controller
         }
     }
 
-
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
+    public function reportePdf($id)
     {
-        //
+        $factura = Factura::with([
+            'cliente',
+            'empresa',
+            'sucursal',
+            'usuario',
+            'tipoDocumentoTributario',
+            'detalles.producto',
+            'detalles.unidadMedida'
+        ])->findOrFail($id);
+
+        $nombreActividad = EmpresaActividadEconomica::join(
+            'mh_actividad_economica as ae',
+            'general_datos_empresa_actividades_economicas.idActividad',
+            '=',
+            'ae.id'
+        )
+            ->where('general_datos_empresa_actividades_economicas.idEmpresa', $factura->idEmpresa)
+            ->where('general_datos_empresa_actividades_economicas.actividadPrincipal', 'S')
+            ->value('ae.nombreActividad');
+
+        $sucursal = $factura->sucursal->first();
+
+
+        $pdf = Pdf::loadView('pdf.factura_a4', [
+            'factura' => $factura,
+            'nombreActividad' => $nombreActividad,
+            'sucursal' => $sucursal,
+            // opcional:
+            'logoPath' => null, // public_path('images/logo.png')
+            'qrBase64' => null, // base64 PNG si lo tienes
+            // colores (puedes mapear desde BD)
+            'primario' => '#003366',
+            'fondo'    => '#F2F2F2',
+            'borde'    => '#CCCCCC',
+            'texto'    => '#000000',
+        ])->setPaper('A4', 'portrait');
+        //->setPaper('A4', 'landscape');
+
+        return $pdf->stream('DTE_' . $factura->numeroControl . '.pdf');
     }
 
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
+    public function ticketJson($id)
+    {
+        try {
+
+            $factura = Factura::with([
+                'cliente',
+                'empresa',
+                'sucursal',
+                'tipoDocumentoTributario',
+                'detalles.producto'
+            ])->find($id);
+
+            if (!$factura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Factura no encontrada'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'empresa' => [
+                        'nombre' => $factura->empresa->nombre,
+                        'direccion' => $factura->empresa->direccion,
+                        'nit' => $factura->empresa->nit,
+                    ],
+                    'documento' => [
+                        'tipo' => strtoupper($factura->tipoDocumentoTributario->nombre ?? ''),
+                        'codigoGeneracion' => $factura->codigoGeneracion,
+                        'numeroControl' => $factura->numeroControl,
+                        'fecha' => $factura->fechaHoraEmision->format('Y-m-d H:i'),
+                        'caja' => $factura->sucursal->nombreSucursal ?? 'Caja',
+                    ],
+                    'cliente' => [
+                        'nombre' => $factura->cliente->nombreCliente ?? '',
+                        'documento' => $factura->cliente->numeroDocumento ?? '',
+                        'direccion' => $factura->cliente->direccion ?? '',
+                    ],
+                    'items' => $factura->detalles->map(function ($item) {
+                        return [
+                            'cantidad' => number_format($item->cantidad, 2),
+                            'descripcion' => $item->producto->nombre ?? 'Servicio',
+                            'total' => number_format(
+                                $item->gravadas + $item->iva,
+                                2
+                            ),
+                        ];
+                    }),
+                    'totales' => [
+                        'subtotal' => number_format($factura->subTotal, 2),
+                        'iva' => number_format($factura->totalIVA, 2),
+                        'total' => number_format($factura->totalPagar, 2),
+                    ],
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar ticket',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+
+    /*public function reportePdf($id)
+    {
+        try {
+
+            $factura = Factura::with([
+                'cliente',
+                'empresa',
+                'sucursal',
+                'usuario',
+                'tipoDocumentoTributario',
+                'detalles.producto',
+                'detalles.unidadMedida'
+            ])->find($id);
+
+            if (!$factura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Factura no encontrada'
+                ], 404);
+            }
+
+            $pdf = Pdf::loadView('pdf.factura_ticket', [
+                'factura' => $factura
+            ])->setPaper([0, 0, 226.77, 600], 'portrait'); // tamaño ticket ~80mm
+
+            return $pdf->stream(
+                'Factura_' . $factura->numeroControl . '.pdf'
+            );
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar PDF',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }*/
+
+    public function edit($id, Request $request)
+    {
+        $factura = Factura::findOrFail($id);
+
+
+        $idEmpresa = $request->idEmpresa ?? 0;
+
+        $empresas = Empresa::where('id', $idEmpresa)->select('id', 'nombreComercial')->get();
+        $tiposDocumento = TipoDocumentoTributario::select('id', 'nombre')->get();
+        $clientes = Cliente::with([
+            'actividadEconomica' => function ($q) {
+                $q->select('id', 'nombreActividad as nombre');
+            },
+            'departamento' => function ($q) {
+                $q->select('id', 'nombre');
+            },
+            'municipio' => function ($q) {
+                $q->select('id', 'nombre');
+            }
+        ])
+            ->where('idEmpresa', $idEmpresa)->get();
+        $tiposPlazo = TipoPlazo::select('id', 'nombre')->get();
+        $condicionesVenta = CondicionVenta::select('id', 'nombre')->get();
+        $productos = Producto::with([
+            'unidadMedida' => function ($q) {
+                $q->select('id', 'nombre');
+            }
+        ])
+            ->where('idEmpresa', $idEmpresa)
+            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'factura' => $factura,
+                'empresas' => $empresas,
+                'tiposDocumento' => $tiposDocumento,
+                'clientes' => $clientes,
+                'tiposPlazo' => $tiposPlazo,
+                'condicionesVenta' => $condicionesVenta,
+                'productos' => $productos,
+            ],
+        ], 200);
+    }
+
+
     public function update(Request $request, $id)
     {
         //
     }
 
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
+
     public function destroy($id)
     {
         //

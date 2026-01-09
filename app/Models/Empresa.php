@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\mh\ActividadEconomica;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -43,4 +44,16 @@ class Empresa extends Model
         'fechaRegistro' => 'datetime',
         'fechaElimina' => 'datetime',
     ];
+
+
+
+    public function actividadEconomica()
+    {
+        return $this->belongsTo(ActividadEconomica::class, 'idActividadEconomica', 'id');
+    }
+
+    public function sucursal()
+    {
+        return $this->hasMany(EmpresaSucursal::class, 'idEmpresa', 'id');
+    }
 }
