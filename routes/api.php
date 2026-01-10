@@ -24,6 +24,11 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 Route::post('login', [AuthController::class, 'login']);
 
+Route::get('home/{empresaId}', [AuthController::class, 'home']);
+
+Route::get('user/{id}/empresa', [AuthController::class, 'getEmpresas']);
+
+
 Route::get('cliente', [ClienteController::class, 'index']);
 Route::get('cliente/create', [ClienteController::class, 'create']);
 Route::post('cliente', [ClienteController::class, 'store']);
@@ -36,5 +41,4 @@ Route::post('factura', [FacturaController::class, 'store']);
 Route::get('factura/{id}', [FacturaController::class, 'edit']);
 Route::post('factura/emitir/{id}', [FacturaController::class, 'emitir']);
 Route::get('factura/reporte-pdf/{id}', [FacturaController::class, 'reportePdf']);
-Route::get('facturas/{id}/ticket',[FacturaController::class, 'ticketJson']
-);
+Route::get('facturas/{id}/ticket',[FacturaController::class, 'ticketJson']);

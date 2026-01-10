@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Factura;
 use App\Models\UsuarioEmpresa;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Throwable;
 
 class AuthController extends Controller
@@ -67,7 +69,29 @@ class AuthController extends Controller
                 'success' => true,
                 'data'    => $datosUsuario
             ], 200);
+        } catch (Throwable $e) {
 
+            return response()->json([
+                'success' => false,
+                'message' => 'ERROR_INTERNO'
+            ], 500);
+        }
+    }
+
+    public function home(int $empresaId)
+    {
+        try {
+
+            $facturas = Factura::where('idEmpresa', $empresaId)
+                ->where('eliminado', 'N')
+                ->select('estadoHacienda', DB::raw('COUNT(*) as total'))
+                ->groupBy('estadoHacienda')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $facturas
+            ], 200);
         } catch (Throwable $e) {
 
             return response()->json([
@@ -78,4 +102,29 @@ class AuthController extends Controller
     }
 
 
+    public function getEmpresas(int $id): JsonResponse
+    {
+        try {
+
+            $empresas = UsuarioEmpresa::with('empresa:id,nombre')
+                ->where('idUsuarioAsignado', $id)
+                ->where('eliminado', 'N')
+                ->get()
+                ->pluck('empresa')
+                ->filter()
+                ->unique('id')
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $empresas
+            ], 200);
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'ERROR_INTERNO'
+            ], 500);
+        }
+    }
 }
