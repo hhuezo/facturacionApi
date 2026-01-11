@@ -27,6 +27,10 @@ class FacturaController extends Controller
 
         $facturas = Factura::with(['cliente', 'empresa', 'tipoDocumentoTributario', 'usuario'])
             ->where('idEmpresa', $idEmpresa)
+            ->whereBetween('fechaRegistraOrden', [
+                Carbon::now()->subMonth()->startOfDay(),
+                Carbon::now()->endOfDay()
+            ])
             ->orderBy('facturacion_encabezado.id', 'desc')
             ->get()
             ->toArray();

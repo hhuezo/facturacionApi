@@ -49,6 +49,6 @@ Route::get('factura/create', [FacturaController::class, 'create']);
 Route::post('factura', [FacturaController::class, 'store']);
 Route::get('factura/{id}/edit', [FacturaController::class, 'edit']);
 Route::put('factura/{id}', [FacturaController::class, 'update']);
-Route::post('factura/emitir{id}', [FacturaController::class, 'emitir']);
+Route::post('factura/emitir/{id}', [FacturaController::class, 'emitir']);
 Route::get('factura/reporte-pdf/{id}', [FacturaController::class, 'reportePdf']);
 Route::get('facturas/{id}/ticket',[FacturaController::class, 'ticketJson']);
