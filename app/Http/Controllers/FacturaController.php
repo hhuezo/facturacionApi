@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Ramsey\Uuid\Uuid;
 
 class FacturaController extends Controller
 {
@@ -111,6 +112,8 @@ class FacturaController extends Controller
 
             $factura = new Factura();
 
+            $codigoGeneracion = strtoupper(Uuid::uuid4()->toString());
+
             $factura->idEmpresa        = $request->idEmpresa;
             $factura->idSucursal       = $sucursal->id;
             $factura->idTipoDte        = $request->idTipoDte;
@@ -127,12 +130,14 @@ class FacturaController extends Controller
             $factura->idPlazo          = $request->idPlazo ?? null;
             $factura->diasCredito      = $request->diasCredito ?? null;
 
+            $factura->estadoHacienda   = "COTIZACION";
+            $factura->codigoGeneracion = $codigoGeneracion;
+
             $factura->eliminado = 'N';
             $factura->fechaRegistraOrden = Carbon::now();
             $factura->idUsuarioRegistraOrden = auth()->id();
 
             $factura->save();
-
 
 
             foreach ($request->items as $index => $item) {
