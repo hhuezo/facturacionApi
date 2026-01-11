@@ -1,0 +1,319 @@
+<?php
+
+namespace App\Http\Controllers\catalogo;
+
+use App\Http\Controllers\Controller;
+use App\Models\catalogo\Producto;
+use App\Models\catalogo\TipoItem;
+use App\Models\mh\UnidadMedida;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+
+class ProductoController extends Controller
+{
+
+    public function index(Request $request)
+    {
+        $idEmpresa = $request->idEmpresa ?? 0;
+        $productos = Producto::with([
+            'unidadMedida:id,nombre',
+            'tipoItem:id,nombre'
+        ])
+            ->select(
+                'id',
+                'idUnidadMedida',
+                'idTipoItem',
+                'codigo',
+                'nombre',
+                'precioUnitarioConIva',
+                'poseeDescuento',
+                'porcentajeDescuento',
+                'valorDescuento',
+                'precioUnitarioFinalConIVA',
+                'descripcion',
+                'especificaciones'
+            )
+            ->where('idEmpresa', $idEmpresa)
+            ->where('eliminado', 'N')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $productos,
+        ], 200);
+    }
+
+    function generarAlfanumRandom(int $len = 12): string
+    {
+        $chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $max = strlen($chars) - 1;
+        $out = '';
+        for ($i = 0; $i < $len; $i++) {
+            $idx = random_int(0, $max);
+            $out .= $chars[$idx];
+        }
+        return $out;
+    }
+
+    public function create(Request $request)
+    {
+        $tipoItem = TipoItem::where('eliminado', 'N')->select('id', 'nombre')->get();
+        $unidadesMedida = UnidadMedida::where('eliminado', 'N')->select('id', 'nombre')->get();
+        $codigo = $this->generarAlfanumRandom();
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'tipoItem' => $tipoItem,
+                'unidadesMedida' => $unidadesMedida,
+                'codigo' => $codigo,
+            ],
+        ], 200);
+    }
+
+
+    public function store(Request $request)
+    {
+        $request->validate(
+            [
+                'idEmpresa'            => 'required|integer',
+                'codigo'               => 'required|string|max:100',
+                'nombre'               => 'required|string|max:1500',
+
+                'idTipoItem'           => 'required|integer',
+                'idUnidadMedida'       => 'required|integer',
+
+                'precioUnitarioConIva' => 'required|numeric|min:0',
+
+                'poseeDescuento'       => 'required|in:S,N',
+                'porcentajeDescuento'  => 'nullable|numeric|min:0',
+                'valorDescuento'       => 'nullable|numeric|min:0',
+
+                'descripcion'          => 'nullable|string|max:2000',
+                'especificaciones'     => 'nullable|string|max:3000',
+            ],
+            [
+                // Empresa
+                'idEmpresa.required'   => 'La empresa es obligatoria.',
+                'idEmpresa.integer'    => 'La empresa seleccionada no es válida.',
+
+                // Código
+                'codigo.required'      => 'El código del producto es obligatorio.',
+                'codigo.string'        => 'El código del producto debe ser texto.',
+                'codigo.max'           => 'El código del producto no puede exceder 100 caracteres.',
+
+                // Nombre
+                'nombre.required'      => 'El nombre del producto es obligatorio.',
+                'nombre.string'        => 'El nombre del producto debe ser texto.',
+                'nombre.max'           => 'El nombre del producto no puede exceder 1500 caracteres.',
+
+                // Tipo Ítem
+                'idTipoItem.required'  => 'Debe seleccionar el tipo de ítem.',
+                'idTipoItem.integer'   => 'El tipo de ítem seleccionado no es válido.',
+
+                // Unidad Medida
+                'idUnidadMedida.required' => 'Debe seleccionar la unidad de medida.',
+                'idUnidadMedida.integer'  => 'La unidad de medida seleccionada no es válida.',
+
+                // Precio
+                'precioUnitarioConIva.required' => 'El precio unitario con IVA es obligatorio.',
+                'precioUnitarioConIva.numeric'  => 'El precio unitario con IVA debe ser numérico.',
+                'precioUnitarioConIva.min'      => 'El precio unitario con IVA no puede ser negativo.',
+
+                // Descuento
+                'poseeDescuento.required' => 'Debe indicar si el producto posee descuento.',
+                'poseeDescuento.in'       => 'El valor de descuento debe ser S o N.',
+
+                'porcentajeDescuento.numeric' => 'El porcentaje de descuento debe ser un número válido.',
+                'porcentajeDescuento.min'     => 'El porcentaje de descuento no puede ser negativo.',
+
+                'valorDescuento.numeric' => 'El valor del descuento debe ser un número válido.',
+                'valorDescuento.min'     => 'El valor del descuento no puede ser negativo.',
+
+                // Descripción
+                'descripcion.string' => 'La descripción debe ser texto.',
+                'descripcion.max'    => 'La descripción no puede exceder 2000 caracteres.',
+
+                // Especificaciones
+                'especificaciones.string' => 'Las especificaciones deben ser texto.',
+                'especificaciones.max'    => 'Las especificaciones no pueden exceder 3000 caracteres.',
+            ]
+        );
+
+
+        $producto = new Producto();
+
+        $producto->idEmpresa                = $request->idEmpresa;
+        $producto->codigo                   = $request->codigo;
+        $producto->nombre                   = $request->nombre;
+
+        $producto->idTipoItem               = $request->idTipoItem;
+        $producto->idUnidadMedida            = $request->idUnidadMedida;
+
+        $producto->precioUnitarioConIva     = $request->precioUnitarioConIva;
+        $producto->precioVentaConIva     = $request->precioUnitarioConIva;
+        $producto->poseeDescuento           = $request->poseeDescuento;
+
+        $producto->porcentajeDescuento      = $request->porcentajeDescuento ?? null;
+        $producto->valorDescuento           = $request->valorDescuento ?? null;
+
+        // Si más adelante calculas el precio final en backend
+        $producto->precioUnitarioFinalConIVA = $request->precioUnitarioFinalConIVA ?? null;
+
+        $producto->descripcion              = $request->descripcion ?? null;
+        $producto->especificaciones         = $request->especificaciones ?? null;
+
+        // Valores por defecto
+        $producto->eliminado                = 'N';
+        $producto->fechaRegistra            = Carbon::now();
+        $producto->idUsuarioRegistra     = $request->idUsuario  ?? null;
+
+        $producto->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Producto registrado correctamente.',
+            'data'    => $producto
+        ], 201);
+    }
+
+
+
+    public function edit($id)
+    {
+        $producto = Producto::select(
+            'id',
+            'idUnidadMedida',
+            'idTipoItem',
+            'codigo',
+            'nombre',
+            'precioUnitarioConIva',
+            'poseeDescuento',
+            'porcentajeDescuento',
+            'valorDescuento',
+            'precioUnitarioFinalConIVA',
+            'descripcion',
+            'especificaciones'
+        )
+            ->where('eliminado', 'N')->find($id);
+        $tipoItem = TipoItem::where('eliminado', 'N')->select('id', 'nombre')->get();
+        $unidadesMedida = UnidadMedida::where('eliminado', 'N')->select('id', 'nombre')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'producto' => $producto,
+                'tipoItem' => $tipoItem,
+                'unidadesMedida' => $unidadesMedida,
+            ],
+        ], 200);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate(
+            [
+                'idEmpresa'            => 'required|integer',
+                'nombre'               => 'required|string|max:1500',
+
+                'idTipoItem'           => 'required|integer',
+                'idUnidadMedida'       => 'required|integer',
+
+                'precioUnitarioConIva' => 'required|numeric|min:0',
+
+                'poseeDescuento'       => 'required|in:S,N',
+                'porcentajeDescuento'  => 'nullable|numeric|min:0',
+                'valorDescuento'       => 'nullable|numeric|min:0',
+
+                'descripcion'          => 'nullable|string|max:2000',
+                'especificaciones'     => 'nullable|string|max:3000',
+            ],
+            [
+                // Empresa
+                'idEmpresa.required'   => 'La empresa es obligatoria.',
+                'idEmpresa.integer'    => 'La empresa seleccionada no es válida.',
+
+                // Nombre
+                'nombre.required'      => 'El nombre del producto es obligatorio.',
+                'nombre.string'        => 'El nombre del producto debe ser texto.',
+                'nombre.max'           => 'El nombre del producto no puede exceder 1500 caracteres.',
+
+                // Tipo Ítem
+                'idTipoItem.required'  => 'Debe seleccionar el tipo de ítem.',
+                'idTipoItem.integer'   => 'El tipo de ítem seleccionado no es válido.',
+
+                // Unidad Medida
+                'idUnidadMedida.required' => 'Debe seleccionar la unidad de medida.',
+                'idUnidadMedida.integer'  => 'La unidad de medida seleccionada no es válida.',
+
+                // Precio
+                'precioUnitarioConIva.required' => 'El precio unitario con IVA es obligatorio.',
+                'precioUnitarioConIva.numeric'  => 'El precio unitario con IVA debe ser numérico.',
+                'precioUnitarioConIva.min'      => 'El precio unitario con IVA no puede ser negativo.',
+
+                // Descuento
+                'poseeDescuento.required' => 'Debe indicar si el producto posee descuento.',
+                'poseeDescuento.in'       => 'El valor de descuento debe ser S o N.',
+
+                'porcentajeDescuento.numeric' => 'El porcentaje de descuento debe ser un número válido.',
+                'porcentajeDescuento.min'     => 'El porcentaje de descuento no puede ser negativo.',
+
+                'valorDescuento.numeric' => 'El valor del descuento debe ser un número válido.',
+                'valorDescuento.min'     => 'El valor del descuento no puede ser negativo.',
+
+                // Descripción
+                'descripcion.string' => 'La descripción debe ser texto.',
+                'descripcion.max'    => 'La descripción no puede exceder 2000 caracteres.',
+
+                // Especificaciones
+                'especificaciones.string' => 'Las especificaciones deben ser texto.',
+                'especificaciones.max'    => 'Las especificaciones no pueden exceder 3000 caracteres.',
+            ]
+        );
+
+        $producto = Producto::findOrFail($id);
+
+        // Seguridad básica: misma empresa
+        if ($producto->idEmpresa != $request->idEmpresa) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tiene permiso para modificar este producto.'
+            ], 403);
+        }
+
+        $producto->nombre                   = $request->nombre;
+        $producto->idTipoItem               = $request->idTipoItem;
+        $producto->idUnidadMedida            = $request->idUnidadMedida;
+
+        $producto->precioUnitarioConIva     = $request->precioUnitarioConIva;
+        $producto->precioVentaConIva     = $request->precioUnitarioConIva;
+        $producto->poseeDescuento           = $request->poseeDescuento;
+
+        if ($request->poseeDescuento == 'S') {
+            $producto->porcentajeDescuento      = $request->porcentajeDescuento ?? 0;
+            $producto->valorDescuento           = $request->valorDescuento ?? 0;
+        } else {
+            $producto->porcentajeDescuento      = null;
+            $producto->valorDescuento           = null;
+        }
+
+        $producto->porcentajeDescuento      = $request->porcentajeDescuento ?? null;
+        $producto->valorDescuento           = $request->valorDescuento ?? null;
+
+        $producto->precioUnitarioFinalConIVA = $request->precioUnitarioFinalConIVA ?? null;
+
+        $producto->descripcion              = $request->descripcion ?? null;
+        $producto->especificaciones         = $request->especificaciones ?? null;
+
+        // Auditoría
+        $producto->fechaEdicion            = Carbon::now();
+        $producto->idUsuarioEdita        = $request->idUsuario ?? null;
+
+        $producto->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Producto actualizado correctamente.',
+            'data'    => $producto
+        ], 200);
+    }
+}

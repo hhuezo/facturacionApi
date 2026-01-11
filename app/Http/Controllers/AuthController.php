@@ -106,7 +106,7 @@ class AuthController extends Controller
     {
         try {
 
-            $empresas = UsuarioEmpresa::with('empresa:id,nombre')
+            $empresas = UsuarioEmpresa::with('empresa:id,nombreComercial as nombre')
                 ->where('idUsuarioAsignado', $id)
                 ->where('eliminado', 'N')
                 ->get()

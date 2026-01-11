@@ -369,6 +369,17 @@ class FacturaController extends Controller
     {
         $factura = Factura::findOrFail($id);
 
+        $detalles = FacturaDetalle::with([
+            'producto' => function ($q) {
+                $q->select('id', 'nombre');
+            },
+            'unidadMedida' => function ($q) {
+                $q->select('id', 'nombre');
+            }
+        ])
+            ->where('idEncabezado', $factura->id)
+            ->get();
+
 
         $idEmpresa = $request->idEmpresa ?? 0;
 
@@ -401,6 +412,7 @@ class FacturaController extends Controller
             'success' => true,
             'data' => [
                 'factura' => $factura,
+                'detalles' => $detalles,
                 'empresas' => $empresas,
                 'tiposDocumento' => $tiposDocumento,
                 'clientes' => $clientes,
@@ -414,8 +426,110 @@ class FacturaController extends Controller
 
     public function update(Request $request, $id)
     {
-        //
+        DB::beginTransaction();
+
+        try {
+
+            /** =============================
+             * 1️⃣ OBTENER FACTURA
+             * ============================= */
+            $factura = Factura::findOrFail($id);
+
+            /** =============================
+             * 2️⃣ ACTUALIZAR ENCABEZADO
+             * ============================= */
+            $factura->idEmpresa        = $request->idEmpresa;
+            $factura->idTipoDte        = $request->idTipoDte;
+            $factura->idCliente        = $request->idCliente;
+
+            $factura->subTotal       = $request->subTotal;
+            $factura->totalIVA       = $request->totalIVA;
+            $factura->totalPagar     = $request->totalPagar;
+
+            $factura->idCondicionVenta = $request->idCondicionVenta;
+            $factura->idPlazo          = $request->idPlazo ?? null;
+            $factura->diasCredito      = $request->diasCredito ?? null;
+
+            $factura->save();
+
+            /** =============================
+             * 3️⃣ IDS DE DETALLES RECIBIDOS
+             * ============================= */
+            $idsDetalleRequest = collect($request->items)
+                ->pluck('idDetalle')
+                ->filter(fn($id) => !empty($id) && $id > 0)
+                ->values()
+                ->toArray();
+
+            /** =============================
+             * 4️⃣ ELIMINAR DETALLES QUE YA NO VIENEN
+             * ============================= */
+            FacturaDetalle::where('idEncabezado', $factura->id)
+                ->whereNotIn('id', $idsDetalleRequest)
+                ->delete();
+
+            /** =============================
+             * 5️⃣ INSERTAR / ACTUALIZAR DETALLES
+             * ============================= */
+            foreach ($request->items as $item) {
+
+                // 🔹 ACTUALIZAR
+                if (!empty($item['idDetalle']) && $item['idDetalle'] > 0) {
+
+                    $detalle = FacturaDetalle::where('idEncabezado', $factura->id)
+                        ->where('id', $item['idDetalle'])
+                        ->firstOrFail();
+                }
+                // 🔹 CREAR
+                else {
+
+                    $producto = Producto::findOrFail($item['idProducto']);
+
+                    $detalle = new FacturaDetalle();
+                    $detalle->idEncabezado = $factura->id;
+                    $detalle->idProducto   = $item['idProducto'];
+                    $detalle->idTipoItem   = $producto->idTipoItem;
+                }
+
+                // 🔹 CAMPOS COMUNES
+                $detalle->idUnidadMedida = $item['idUnidadMedida'];
+                $detalle->cantidad       = $item['cantidad'];
+                $detalle->precioUnitario = $item['precioUnitario'];
+
+                $detalle->descuento  = $item['descuento'] ?? 0;
+                $detalle->gravadas   = $item['gravadas'];
+                $detalle->excentas   = $item['excentas'] ?? 0;
+                $detalle->iva        = $item['iva'];
+
+                $detalle->save();
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success'   => true,
+                'message'   => 'Factura actualizada correctamente',
+                'idFactura' => $factura->id
+            ]);
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            Log::error('FACTURA UPDATE - ERROR', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+                'request' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar factura',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
     }
+
 
 
     public function destroy($id)
