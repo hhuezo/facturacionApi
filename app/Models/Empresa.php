@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\mh\ActividadEconomica;
+use App\Models\mh\TipoDocumentoTributario;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -44,6 +45,19 @@ class Empresa extends Model
         'fechaRegistro' => 'datetime',
         'fechaElimina' => 'datetime',
     ];
+
+
+    public function tiposDocumentoTributario()
+    {
+        return $this->belongsToMany(
+            TipoDocumentoTributario::class,
+            'general_datos_empresa_config_documentos_tributarios',
+            'idEmpresa',
+            'idTipoDocumentoTributario'
+        )
+            ->wherePivot('eliminado', 'N')
+            ->wherePivot('estado', 'A');
+    }
 
 
 

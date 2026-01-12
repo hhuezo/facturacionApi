@@ -65,7 +65,14 @@ class FacturaController extends Controller
         $idEmpresa = $request->idEmpresa ?? 0;
 
         $empresas = Empresa::where('id', $idEmpresa)->select('id', 'nombreComercial')->get();
-        $tiposDocumento = TipoDocumentoTributario::select('id', 'nombre')->get();
+        $tiposDocumento = Empresa::with([
+            'tiposDocumentoTributario:id,nombre'
+        ])
+            ->where('id', $idEmpresa)
+            ->first()
+            ?->tiposDocumentoTributario ?? collect();
+
+
         $clientes = Cliente::with([
             'actividadEconomica' => function ($q) {
                 $q->select('id', 'nombreActividad as nombre');
