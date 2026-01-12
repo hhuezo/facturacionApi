@@ -114,6 +114,80 @@ class FacturaController extends Controller
     public function store(Request $request)
     {
 
+        /* VALIDACIONES ADICIONALES
+
+            recalcularTotales() {
+                    console.log("------------- FUNCION RECALCULANDO TOTALES ------------------")
+                    // Inicializar totales
+                    this.totalExcenta = 0;
+                    this.totalGravada = 0;
+                    this.totalDescuento = 0;
+                    this.ivaVenta = 0;
+                    this.subTotal = 0;
+                    this.totalPagar = 0;
+                    this.totalFletes = 0;
+                    this.totalSeguros = 0;
+                    this.retencionIVA1 = 0;
+                    this.tmpRentaServicios = 0;
+
+                    var idTipoDte = parseInt(document.getElementById("idTipoDte").value.trim()) || parseInt(facturar.idTipoDte.value);
+                    var idTipoContribuyente = parseInt(this.idTipoContribuyente) || 1;
+                    console.log("id Tipo DTE para recalcular es: " + idTipoDte);
+
+
+                    this.detalleProductos.forEach(item => {
+                        // aca se le calcula el iva por aparte solo a los CCF y a las NC
+                        let totalIva = (idTipoDte === 2 || idTipoDte === 4) ? item.gravada * this.porcentajeIVA : 0.00;
+                        console.log("el total de iva es: " + totalIva)
+                        console.log("Id tipo DTEE: " + idTipoDte)
+                        // Sumar a los totales
+                        this.totalExcenta += Number(item.excento);
+                        this.totalGravada += Number(item.gravada);
+                        this.ivaVenta += totalIva;
+                        this.tmpRentaServicios += Number(item.rentaPorServicios);
+
+                    });
+                    // si es CCF y a las NC y si es gran contribuyente
+                    if ((idTipoDte === 2 || idTipoDte === 4) && idTipoContribuyente === 4) {
+                        if (this.totalGravada > 100) {
+                            this.retencionIVA1 = this.totalGravada * 0.01; // Retención del 1% sobre el IVA
+                        } else {
+                            this.retencionIVA1 = 0;
+                        }
+                    }
+                    // si es consumidor final y es gran contribuyente
+                    if (idTipoDte === 1 && idTipoContribuyente === 4) {
+                        var tmpGravadaSinIVA = this.totalGravada / 1.13;
+                        if (tmpGravadaSinIVA > 100) {
+                            this.retencionIVA1 = tmpGravadaSinIVA * 0.01; // Retención del 1% sobre el IVA
+                        } else {
+                            this.retencionIVA1 = 0;
+                        }
+                    }
+                    console.log("IVA Retenido 1%: " + this.retencionIVA1);
+                    this.totalSeguros = parseFloat(document.getElementById("txtSeguro").value.trim()) || 0;
+                    this.totalFletes = parseFloat(document.getElementById("txtFletes").value.trim()) || 0;
+
+                    // Calcular subtotal y total a pagar
+                    this.subTotal = this.totalExcenta + this.totalGravada;
+                    // Sujeto Excluido calcularemos el 10% de la renta
+                    if (idTipoDte === 10) {
+                        this.totalRetencionRenta = this.subTotal * 0.10;
+                    }
+                    console.log("renta por servcicios: " + this.tmpRentaServicios);
+                    console.log("tipo dte para evaluar renta en servicios es: " + idTipoDte);
+                    if (idTipoDte === 1 || (idTipoDte === 2 || idTipoDte === 4) && this.tmpRentaServicios > 0) {
+                        console.log("ingreso ala a la retencion por servicios");
+                        this.totalRetencionRenta = this.tmpRentaServicios;
+                    }
+
+                    this.totalPagar = (this.subTotal + this.ivaVenta + this.totalSeguros + this.totalFletes) - (this.totalRetencionRenta + this.retencionIVA1);
+                },
+
+
+
+        */
+
         DB::beginTransaction();
 
         try {

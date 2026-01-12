@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\mh\Departamento;
+use App\Models\mh\Municipio;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -41,4 +43,14 @@ class EmpresaSucursal extends Model
         'fechaRegistro' => 'datetime',
         'fechaElimina'  => 'datetime',
     ];
+
+    public function departamento()
+    {
+        return $this->belongsTo(Departamento::class, 'idDepartamento', 'id');
+    }
+
+    public function municipio()
+    {
+        return $this->belongsTo(Municipio::class, 'idMunicipio', 'id');
+    }
 }
