@@ -2,177 +2,416 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Empresa;
+use App\Models\EmpresaActividadEconomica;
+use App\Models\EmpresaConfigTransmisionDte;
 use App\Models\Factura;
+use App\Traits\MhEndpointsTrait;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+
 
 class FacturacionController extends Controller
 {
 
-    public function generarFacturaElectronica($facturaId)
+    use MhEndpointsTrait;
+
+    public function generarFacturaElectronica(int $facturaId)
     {
         $factura = Factura::with([
             'empresa',
-            'sucursal',
-            'cliente',
+            'sucursal.departamento',
+            'sucursal.municipio',
+            'cliente.tipoDocumento',
             'tipoDocumentoTributario',
-            'detalles.producto.unidadMedida'
+            'detalles.producto.unidadMedida',
+            'ambiente',
+            'ambiente',
+            'puntoVenta',
+            'usuario',
         ])->findOrFail($facturaId);
 
-
+        // ============================
+        // 1. GENERAR JSON SEGÚN TIPO DTE
+        // ============================
         switch ((int) $factura->idTipoDte) {
-            case 1: // Consumidor Final
-                return $this->buildJsonConsumidorFinal($factura);
 
-            case 2: // Crédito Fiscal
-                return $this->buildJsonCreditoFiscal($factura);
+            case 1: // Consumidor Final (01)
+                $jsonResponse = $this->buildJsonConsumidorFinal($factura);
+                //return response()->json($jsonResponse);
+                break;
 
-            case 3: // Nota de remision
-                // Implementación futura
+            case 2: // Crédito Fiscal (03)
+                $jsonResponse = $this->buildJsonCreditoFiscal($factura);
+                break;
 
-            case 4: // Nota de credito
-                $this->buildJsonNotaCredito($factura);
+            case 5: // Nota de Crédito (05)
+                $jsonResponse = $this->buildJsonNotaCredito($factura);
+                break;
 
-            case 5: // Nota Débito
-                return $this->buildJsonNotaDebito($factura);
+            case 6: // Nota Débito (06)
+                $jsonResponse = $this->buildJsonNotaDebito($factura);
+                break;
 
-            case 9: // Factura Exportación
-                return $this->buildJsonFacturaExportacion($factura);
+            case 9: // Factura Exportación (09)
+                $jsonResponse = $this->buildJsonFacturaExportacion($factura);
+                break;
 
-            case 10: // Sujeto Excluido
-                return $this->buildJsonSujetoExcluido($factura);
-
+            case 10: // Sujeto Excluido (10)
+                $jsonResponse = $this->buildJsonSujetoExcluido($factura);
+                break;
 
             default:
                 return response()->json([
                     'mensaje' => 'ERROR',
-                    'error' => 'Tipo de DTE no soportado aún'
+                    'error'   => 'Tipo de DTE no soportado'
                 ], 400);
         }
-    }
 
+        // ============================
+        // 2. VALIDAR RESPUESTA JSON
+        // ============================
+        $jsonResult = $jsonResponse->getData(true);
 
-    private function buildJsonConsumidorFinal(Factura $factura)
-    {
-        // 1. Cálculos generales
-        $iva = 0;
-        $subTotalGravada = 0;
-        $subTotalExenta = 0;
-        $descuentoTotal = 0;
-
-        foreach ($factura->detalles as $detalle) {
-            $descuentoTotal += $detalle->descuento;
-
-            if ($detalle->excentas == 0) {
-                $subTotalGravada += $detalle->gravadas;
-                $iva += $detalle->iva;
-            } else {
-                $subTotalExenta += $detalle->excentas;
-            }
+        if (($jsonResult['mensaje'] ?? 'ERROR') !== 'EXITO') {
+            return response()->json($jsonResult, 500);
         }
 
-        $subTotalProductos = $subTotalGravada + $subTotalExenta;
+        // ============================
+        // 3. GUARDAR JSON BASE (ARCHIVO FÍSICO)
+        // ============================
+        $this->crearJsonParteEncabezadoDetalle(
+            $factura->codigoGeneracion,
+            $jsonResult['json'],              // ARRAY del DTE
+            $factura->idEmpresa,
+            $factura->fechaHoraEmision
+        );
 
-        // 2. Total en letras
-        $totalLetras = $this->totalEnLetras((float) $factura->totalPagar);
+        // ============================
+        // 4. ENCODE JSON (PARA FIRMA)
+        // ============================
+        $jsonEncode = json_encode($jsonResult['json'], JSON_UNESCAPED_UNICODE);
 
-        // 3. Fecha de emisión
-        $fecha = Carbon::parse($factura->fechaHoraEmision);
 
-        // 4. JSON DTE
-        $dteJson = [
-            'identificacion' => [
-                'version' => (int) $factura->versionJson,
-                'ambiente' => $factura->idAmbiente,
-                'tipoDte' => $factura->tipoDocumentoTributario->codigo,
-                'numeroControl' => $factura->numeroControl,
-                'codigoGeneracion' => $factura->codigoGeneracion,
-                'tipoModelo' => (int) $factura->idTipoFacturacion,
-                'tipoOperacion' => (int) $factura->idTipoTransmision,
-                'tipoContingencia' => $factura->idTipoContingencia,
-                'motivoContin' => $factura->motivoContingencia,
-                'fecEmi' => $fecha->format('Y-m-d'),
-                'horEmi' => $fecha->format('H:i:s'),
-                'tipoMoneda' => 'USD'
-            ],
-
-            'emisor' => [
-                'nit' => str_replace('-', '', $factura->empresa->nit),
-                'nrc' => str_replace('-', '', $factura->empresa->numeroIVA),
-                'nombre' => $factura->empresa->nombre,
-                'nombreComercial' => $factura->empresa->nombreComercial,
-                'direccion' => [
-                    'departamento' => $factura->sucursal->departamento->codigo,
-                    'municipio' => $factura->sucursal->municipio->codigo,
-                    'complemento' => $factura->sucursal->direccion,
-                ],
-                'telefono' => $factura->sucursal->telefono,
-                'correo' => $factura->sucursal->correo
-            ],
-
-            'receptor' => [
-                'tipoDocumento' => null,
-                'numDocumento' => null,
-                'nrc' => null,
-                'nombre' => $factura->cliente->nombreCliente,
-                'direccion' => null,
-                'telefono' => $factura->cliente->telefono,
-                'correo' => $factura->cliente->correo
-            ],
-
-            'cuerpoDocumento' => [],
-
-            'resumen' => [
-                'totalNoSuj' => 0,
-                'totalExenta' => round($subTotalExenta, 2),
-                'totalGravada' => round($subTotalGravada, 2),
-                'subTotalVentas' => round($subTotalProductos, 2),
-                'descuNoSuj' => 0,
-                'descuExenta' => 0,
-                'descuGravada' => 0,
-                'porcentajeDescuento' => 0,
-                'totalDescu' => round($descuentoTotal, 2),
-                'subTotal' => round($subTotalProductos, 2),
-                'ivaRete1' => round($factura->ivaRetenido1, 2),
-                'reteRenta' => round($factura->retencionRenta, 2),
-                'montoTotalOperacion' => round($subTotalProductos, 2),
-                'totalNoGravado' => 0,
-                'totalPagar' => round($factura->totalPagar, 2),
-                'totalLetras' => $totalLetras,
-                'condicionOperacion' => (int) $factura->idCondicionVenta,
-                'totalIva' => round($iva, 2)
-            ]
-        ];
-
-        // 5. Cuerpo documento
-        $contador = 1;
-
-        foreach ($factura->detalles as $detalle) {
-            $dteJson['cuerpoDocumento'][] = [
-                'numItem' => $contador++,
-                'tipoItem' => (int) $detalle->idTipoItem,
-                'cantidad' => round($detalle->cantidad, 6),
-                'codigo' => $detalle->producto->codigo,
-                'uniMedida' => (int) $detalle->unidadMedida->codigo,
-                'descripcion' => $detalle->producto->nombre,
-                'precioUni' => round($detalle->precioUnitario, 6),
-                'montoDescu' => round($detalle->descuento, 6),
-                'ventaNoSuj' => 0,
-                'ventaExenta' => round($detalle->excentas, 6),
-                'ventaGravada' => round($detalle->gravadas, 6),
-                'ivaItem' => round($detalle->iva, 6),
-                'noGravado' => 0
-            ];
+        if ($jsonEncode === false) {
+            return response()->json([
+                'mensaje' => 'ERROR',
+                'error'   => 'Error al codificar JSON para firma'
+            ], 500);
         }
 
+        // ============================
+        // 5. FIRMAR JSON
+        // ============================
+        $firma = $this->firmarJson(
+            $jsonResult['json'],
+            $factura->id,
+            $factura->idEmpresa,
+            $factura->fechaHoraEmision
+        );
+
+        if (($firma->mensaje ?? 'ERROR') !== 'EXITO') {
+            return response()->json($firma, 500);
+        }
+
+        // ============================
+        // 6. GUARDAR FIRMA EN EL MISMO ARCHIVO
+        // ============================
+        $this->editarJsonFirma(
+            $factura->codigoGeneracion,
+            $firma->documento,               // JWT / firma
+            $factura->idEmpresa,
+            $factura->fechaHoraEmision
+        );
+
+        // ============================
+        // 7. VALIDAR CONTINGENCIA
+        // ============================
+        $contingencia = $this->validarSiDteExisteEnContingenciaYsiEstaActiva($factura->id);
+
+        if (
+            $contingencia->mensaje !== 'CONTINGENCIA_PROCESADA'
+            && $contingencia->mensaje !== 'NO_EXISTE_CONTINGENCIA'
+        ) {
+            $contingencia->idEncabezado = $factura->id;
+            return response()->json($contingencia, 409);
+        }
+
+        // ============================
+        // 8. RECEPCIÓN DTE (HACIENDA)
+        // ============================
+        $respuestaHacienda = $this->recepciondte(
+            $factura->id,
+            $factura->idEmpresa,
+            $factura->idSucursal,
+            $jsonEncode,
+            $firma->documento,
+            $factura->fechaHoraEmision
+        );
+
+        if (($respuestaHacienda->mensaje ?? 'ERROR') !== 'EXITO') {
+            return response()->json($respuestaHacienda, 500);
+        }
+
+        // ============================
+        // 9. RESPUESTA FINAL
+        // ============================
         return response()->json([
-            'mensaje' => 'EXITO',
-            'numeroControl' => $factura->numeroControl,
-            'fechaHoraEmision' => $factura->fechaHoraEmision,
-            'json' => $dteJson
+            'mensaje'          => 'EXITO',
+            'estado'           => $respuestaHacienda->estado ?? null,
+            'numeroControl'    => $factura->numeroControl,
+            'codigoGeneracion' => $respuestaHacienda->codigoGeneracion ?? $factura->codigoGeneracion,
+            'selloRecibido'    => $respuestaHacienda->selloRecibido ?? null,
+            'idEncabezado'     => $factura->id
         ]);
     }
+
+
+
+
+
+
+   private function buildJsonConsumidorFinal(Factura $factura)
+{
+    $fecha = Carbon::parse($factura->fechaHoraEmision);
+
+    // ============================
+    // 1. ACTIVIDAD ECONÓMICA
+    // ============================
+    $actividad = EmpresaActividadEconomica::where('idEmpresa', $factura->idEmpresa)
+        ->where('actividadPrincipal', 'S')
+        ->first();
+
+    // ============================
+    // 2. RECEPTOR (DUI / NIT)
+    // ============================
+    $tipoDoc = trim($factura->cliente->tipoDocumento->codigo ?? '');
+    $numDoc  = preg_replace('/[^0-9]/', '', (string)($factura->cliente->numeroDocumento ?? ''));
+
+    $receptorNumDocumento = null;
+
+    // DUI (tipo 13) -> ########-#
+    if ($tipoDoc === '13' && strlen($numDoc) === 9) {
+        $receptorNumDocumento = substr($numDoc, 0, 8) . '-' . substr($numDoc, 8, 1);
+    }
+
+    // NIT (tipo 36) -> 14 dígitos sin guiones
+    if ($tipoDoc === '36' && strlen($numDoc) === 14) {
+        $receptorNumDocumento = $numDoc;
+    }
+
+    // Helpers para formateo MH
+    $f6 = function ($n) { return (float) number_format((float)$n, 6, '.', ''); };
+    $f2 = function ($n) { return (float) number_format((float)$n, 2, '.', ''); };
+
+    // ============================
+    // 3. JSON BASE
+    // ============================
+    $dteJson = [
+        'identificacion' => [
+            'version'          => (int) $factura->versionJson,
+            'ambiente'         => $factura->ambiente->codigo,
+            'tipoDte'          => $factura->tipoDocumentoTributario->codigo,
+            'numeroControl'    => $factura->numeroControl,
+            'codigoGeneracion' => $factura->codigoGeneracion,
+            'tipoModelo'       => (int) $factura->idTipoFacturacion,
+            'tipoOperacion'    => (int) $factura->idTipoTransmision,
+            'tipoContingencia' => $factura->idTipoContingencia,
+            'motivoContin'     => $factura->motivoContingencia,
+            'fecEmi'           => $fecha->format('Y-m-d'),
+            'horEmi'           => $fecha->format('H:i:s'),
+            'tipoMoneda'       => 'USD',
+        ],
+
+        'emisor' => [
+            'nit'                 => str_replace('-', '', $factura->empresa->nit),
+            'nrc'                 => str_replace('-', '', $factura->empresa->numeroIVA),
+            'nombre'              => $factura->empresa->nombre,
+            'nombreComercial'     => $factura->empresa->nombreComercial,
+            'codActividad'        => trim($actividad->actividadEconomica->codigoActividad ?? ''),
+            'descActividad'       => trim($actividad->actividadEconomica->nombreActividad ?? ''),
+            'tipoEstablecimiento' => $factura->sucursal->tipoEstablecimiento->codigo ?? '',
+            'direccion' => [
+                'departamento' => $factura->sucursal->departamento->codigo,
+                'municipio'    => $factura->sucursal->municipio->codigo,
+                'complemento'  => $factura->sucursal->direccion,
+            ],
+            'telefono'        => $factura->sucursal->telefono,
+            'correo'          => $factura->sucursal->correo,
+            'codEstableMH'    => $factura->sucursal->codigoEstablecimiento,
+            'codEstable'      => $factura->sucursal->codigoEstablecimiento,
+            'codPuntoVentaMH' => $factura->puntoVenta->codigoPuntoVentaMh ?? null,
+            'codPuntoVenta'   => blank($factura->puntoVenta->codigoPuntoVentaInterno ?? null)
+                ? null
+                : $factura->puntoVenta->codigoPuntoVentaInterno,
+        ],
+
+        'receptor' => [
+            'tipoDocumento' => in_array($tipoDoc, ['13', '36']) ? $tipoDoc : null,
+            'numDocumento'  => $receptorNumDocumento,
+            'nrc'           => null,
+            'nombre'        => $factura->cliente->nombreCliente ?? '',
+            'codActividad'  => null,
+            'descActividad' => null,
+            'direccion'     => null,
+            'telefono'      => blank($factura->cliente->telefono) ? null : $factura->cliente->telefono,
+            'correo'        => blank($factura->cliente->correo) ? null : $factura->cliente->correo,
+        ],
+
+        'ventaTercero'         => null,
+        'documentoRelacionado' => null,
+        'otrosDocumentos'      => null,
+        'apendice'             => null,
+
+        'extension' => [
+            'nombEntrega'   => $factura->usuario->nombre ?? null,
+            'docuEntrega'   => $factura->usuario->numeroDocumentoIdentidad ?? null,
+            'nombRecibe'    => $factura->cliente->nombreCliente ?? null,
+            'docuRecibe'    => $factura->cliente->numeroDocumento ?? null,
+            'observaciones' => $factura->observaciones ?? null,
+            'placaVehiculo' => null,
+        ],
+
+        'cuerpoDocumento' => [],
+        'resumen'         => [],
+    ];
+
+    // ============================
+    // 4. CUERPO DOCUMENTO (CF)
+    // REGLA: precioUni trae IVA => ventaGravada = TOTAL ITEM (con IVA)
+    // ivaItem = ventaGravada * 13/113
+    // ============================
+    $i = 1;
+
+    $sumVentaGravada = 0.0; // OJO: aquí será TOTAL con IVA
+    $sumVentaExenta  = 0.0;
+    $sumIva          = 0.0;
+    $sumDescu        = 0.0;
+
+    foreach ($factura->detalles as $detalle) {
+
+        $cantidad  = $f6($detalle->cantidad ?? 0);
+        $precioUni = $f6($detalle->precioUnitario ?? 0);
+        $descu     = $f6($detalle->descuento ?? 0);
+
+        // Total bruto (con IVA porque precioUni lo trae)
+        $totalBruto = $f6($cantidad * $precioUni);
+
+        // Total neto del ítem (después del descuento)
+        $totalNeto = $f6($totalBruto - $descu);
+        if ($totalNeto < 0) $totalNeto = 0.0;
+
+        $esExento = ((float)($detalle->excentas ?? 0)) > 0;
+
+        $ventaNoSuj   = 0.0;
+        $ventaExenta  = 0.0;
+        $ventaGravada = 0.0;
+        $ivaItem      = 0.0;
+
+        if ($esExento) {
+            // Exento: el total va como ventaExenta
+            $ventaExenta = $totalNeto;
+            $ivaItem = 0.0;
+        } else {
+            // Gravado CF: ventaGravada ES EL TOTAL del ítem (con IVA)
+            $ventaGravada = $totalNeto;
+
+            // IVA MH desde el total
+            $ivaItem = $f6($ventaGravada * 13 / 113);
+        }
+
+        $descripcion = (string) ($detalle->producto->nombre ?? '');
+        $descripcion = preg_replace('/[\x00-\x1F\x7F]/u', '', $descripcion);
+        $descripcion = trim($descripcion);
+
+        $dteJson['cuerpoDocumento'][] = [
+            'numItem'         => $i++,
+            'tipoItem'        => (int) $detalle->idTipoItem,
+            'numeroDocumento' => null,
+            'cantidad'        => $cantidad,
+            'codigo'          => $detalle->producto->codigo,
+            'codTributo'      => null,
+            'uniMedida'       => (int) $detalle->unidadMedida->codigo,
+            'descripcion'     => $descripcion,
+            'precioUni'       => $precioUni,
+            'montoDescu'      => $descu,
+            'ventaNoSuj'      => 0,
+            'ventaExenta'     => $ventaExenta,
+            'ventaGravada'    => $ventaGravada,
+            'tributos'        => null,
+            'psv'             => 0,
+            'ivaItem'         => $ivaItem,
+            'noGravado'       => 0,
+        ];
+
+        $sumVentaGravada += $ventaGravada;
+        $sumVentaExenta  += $ventaExenta;
+        $sumIva          += $ivaItem;
+        $sumDescu        += $descu;
+    }
+
+    // ============================
+    // 5. RESUMEN
+    // CF con precio IVA incluido:
+    // totalGravada/subTotalVentas/subTotal/montoTotalOperacion/totalPagar = SUM(ventaGravada + ventaExenta)
+    // totalIva aparte
+    // ============================
+    $totalGravada2 = $f2($sumVentaGravada);
+    $totalExenta2  = $f2($sumVentaExenta);
+    $totalIva2     = $f2($sumIva);
+    $totalDescu2   = $f2($sumDescu);
+
+    $subTotalVentas2 = $f2($totalGravada2 + $totalExenta2);
+
+    // En CF precio con IVA incluido => totalPagar = subtotalVentas (NO sumes iva otra vez)
+    $totalPagar2 = $subTotalVentas2;
+
+    $dteJson['resumen'] = [
+        'totalNoSuj'          => 0,
+        'totalExenta'         => $totalExenta2,
+        'totalGravada'        => $totalGravada2,
+        'subTotalVentas'      => $subTotalVentas2,
+        'descuNoSuj'          => 0,
+        'descuExenta'         => 0,
+        'descuGravada'        => 0,
+        'porcentajeDescuento' => 0,
+        'totalDescu'          => $totalDescu2,
+        'tributos'            => null,
+        'subTotal'            => $subTotalVentas2,
+        'ivaRete1'            => 0,
+        'reteRenta'           => 0,
+        'montoTotalOperacion' => $subTotalVentas2,
+        'totalNoGravado'      => 0,
+        'totalPagar'          => $totalPagar2,
+        'totalLetras'         => $this->totalEnLetras($totalPagar2),
+        'saldoFavor'          => 0,
+        'condicionOperacion'  => (int) $factura->idCondicionVenta,
+        'pagos'               => null,
+        'numPagoElectronico'  => null,
+        'totalIva'            => $totalIva2,
+    ];
+
+    return response()->json([
+        'mensaje'          => 'EXITO',
+        'numeroControl'    => $factura->numeroControl,
+        'fechaHoraEmision' => $factura->fechaHoraEmision,
+        'json'             => $dteJson,
+    ]);
+}
+
+
+
+
+    private function truncar($valor, $decimales = 2)
+    {
+        $factor = pow(10, $decimales);
+        return floor($valor * $factor) / $factor;
+    }
+
+
 
 
     private function buildJsonCreditoFiscal(Factura $factura)
@@ -384,7 +623,11 @@ class FacturacionController extends Controller
                     'complemento' => $factura->sucursal->direccion,
                 ],
                 'telefono' => $factura->sucursal->telefono,
-                'correo' => $factura->sucursal->correo
+                'correo' => $factura->sucursal->correo,
+                'codPuntoVenta' => $factura->puntoVenta->codigoPuntoVentaMh
+                    ?? $factura->sucursal->codigoPuntoVenta
+                    ?? 'P001',
+
             ],
 
             'receptor' => [
@@ -1262,6 +1505,613 @@ class FacturacionController extends Controller
                 'error' => 'No se pudo crear el evento de contingencia',
                 'detalle' => $e->getMessage()
             ], 500);
+        }
+    }
+
+
+
+
+    private function firmarJson(
+        array $jsonDte,
+        int $idFactura,
+        int $idEmpresa,
+        string $fechaEmision
+    ): object {
+
+        $respuesta = new \stdClass();
+
+        try {
+
+            // 1️⃣ Configuración de transmisión
+            $config = EmpresaConfigTransmisionDte::where('idEmpresa', $idEmpresa)
+                //->whereNull('fechaElimina')
+                ->firstOrFail();
+
+
+            if (empty($config->urlFirmador) || empty($config->clavePrivada)) {
+                throw new \Exception('Configuración de firmador incompleta');
+            }
+
+            // 2️⃣ Empresa (para el NIT)
+            $empresa = Empresa::findOrFail($idEmpresa);
+
+            // 3️⃣ PAYLOAD EXACTO QUE EL FIRMADOR ESPERA
+            $payloadFirmador = [
+                'nit'        => str_replace('-', '', $empresa->nit),
+                'activo'     => true,
+                'passwordPri' => $config->clavePrivada,
+                'dteJson'    => $jsonDte,
+            ];
+
+            // 4️⃣ Enviar al firmador
+            $httpResponse = Http::timeout(30)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post($config->urlFirmador, $payloadFirmador);
+
+            if (!$httpResponse->successful()) {
+                throw new \Exception(
+                    'Error HTTP firmador: ' . $httpResponse->status()
+                );
+            }
+
+            $firmado = $httpResponse->json();
+
+            // 5️⃣ Guardar respuesta (igual legacy)
+            DB::table('facturacion_mh_firmador')->updateOrInsert(
+                ['idEncabezado' => $idFactura],
+                [
+                    'estado'            => $firmado['status'] ?? 'ERROR',
+                    'respuestaBody'     => serialize($firmado['body'] ?? null),
+                    'fechaHoraRegistro' => now()->format('Y-m-d'),
+                ]
+            );
+
+            $respuesta->mensaje   = 'EXITO';
+            $respuesta->documento = $firmado['body'] ?? null;
+        } catch (\Throwable $e) {
+
+            Log::error('Error al firmar JSON DTE', [
+                'idFactura' => $idFactura,
+                'exception' => $e,
+            ]);
+
+            $respuesta->mensaje   = 'ERROR';
+            $respuesta->error     = $e->getMessage();
+            $respuesta->documento = null;
+        }
+
+        return $respuesta;
+    }
+
+
+    private function validarSiDteExisteEnContingenciaYsiEstaActiva(int $idEncabezado): object
+    {
+        $respuesta = new \stdClass();
+
+        try {
+
+            $registro = DB::table('facturacion_encabezado as encabezado')
+                ->join(
+                    'facturacion_evento_contingencia as contingencia',
+                    'encabezado.idEventoContingencia',
+                    '=',
+                    'contingencia.id'
+                )
+                ->select(
+                    'contingencia.estadoMh',
+                    'contingencia.SelloMh'
+                )
+                ->where('encabezado.id', $idEncabezado)
+                ->first();
+
+            if ($registro) {
+
+                if (
+                    $registro->estadoMh === 'RECIBIDO'
+                    && !empty($registro->SelloMh)
+                ) {
+                    // contingencia ya procesada → se puede enviar
+                    $respuesta->mensaje = 'CONTINGENCIA_PROCESADA';
+                } else {
+                    // existe contingencia activa → NO se envía
+                    $respuesta->mensaje = 'EXISTE_CONTINGENCIA';
+                    $respuesta->estado  = 'CONTINGENCIA';
+                }
+            } else {
+                // no existe contingencia → se puede enviar
+                $respuesta->mensaje = 'NO_EXISTE_CONTINGENCIA';
+            }
+        } catch (\Throwable $e) {
+
+            Log::error('Error validando contingencia DTE', [
+                'idEncabezado' => $idEncabezado,
+                'exception'    => $e,
+            ]);
+
+            $respuesta->mensaje = 'ERROR';
+            $respuesta->error   = $e->getMessage();
+        }
+
+        return $respuesta;
+    }
+
+
+    private function recepciondte(
+        int $idFactura,
+        int $idEmpresa,
+        int $idSucursal,
+        string $jsonEncode,
+        string $documento,
+        string $fechaEmision
+    ): object {
+
+        Log::info('[MH][1] INICIO recepciondte', compact(
+            'idFactura',
+            'idEmpresa',
+            'idSucursal',
+            'fechaEmision'
+        ));
+
+        $respuesta = new \stdClass();
+
+        // ============================
+        // 0. JSON BASE
+        // ============================
+        $jsonEnco = json_decode($jsonEncode);
+
+        if (!$jsonEnco || !isset($jsonEnco->identificacion)) {
+            Log::error('[MH][ERROR] JSON DTE inválido', [
+                'jsonEncode' => $jsonEncode
+            ]);
+            throw new \Exception('JSON DTE inválido');
+        }
+
+        Log::info('[MH][0] JSON DTE válido', [
+            'codigoGeneracion' => $jsonEnco->identificacion->codigoGeneracion,
+            'tipoDte'          => $jsonEnco->identificacion->tipoDte,
+        ]);
+
+        // ============================
+        // 1. CONFIGURACIÓN EMPRESA
+        // ============================
+        $config = EmpresaConfigTransmisionDte::where('idEmpresa', $idEmpresa)->first();
+
+        if (!$config) {
+            Log::error('[MH][1] Empresa sin configuración DTE', compact('idEmpresa'));
+            throw new \Exception('Empresa sin configuración de transmisión DTE');
+        }
+
+        Log::info('[MH][1] Configuración empresa OK', [
+            'ambiente' => $config->ambiente->codigo,
+            'empresa'  => $idEmpresa
+        ]);
+
+        // ============================
+        // 2. ENDPOINTS
+        // ============================
+        $endpoints = $this->obtenerEndpointsMh($config->idTipoAmbiente);
+
+        Log::info('[MH][2] Endpoints MH', $endpoints);
+
+        // ============================
+        // 3. TOKEN
+        // ============================
+        $getToken = $this->obtenerToken($config, $endpoints, $idSucursal);
+
+        Log::info('[MH][3] Respuesta token', (array) $getToken);
+
+        if ($getToken->mensaje !== 'EXITO') {
+            Log::error('[MH][3][ERROR] No se obtuvo token');
+            return $getToken;
+        }
+
+        // ============================
+        // 4. BODY ENVÍO
+        // ============================
+        $body = [
+            'ambiente'         => $config->ambiente->codigo,
+            'idEnvio'          => (int) $idFactura,
+            'version'          => (int) $jsonEnco->identificacion->version,
+            'tipoDte'          => $jsonEnco->identificacion->tipoDte,
+            'documento'        => $documento,
+            'codigoGeneracion' => $jsonEnco->identificacion->codigoGeneracion,
+        ];
+
+        Log::info('[MH][4] Body enviado a MH', $body);
+
+        // ============================
+        // 5. ENVÍO A HACIENDA
+        // ============================
+        try {
+
+            $httpResponse = Http::timeout(30)
+                ->withHeaders([
+                    'Authorization' => $getToken->token,
+                    'Content-Type'  => 'application/json',
+                ])
+                ->post($endpoints['urlRecepcion'], $body);
+        } catch (\Throwable $e) {
+
+            Log::error('[MH][5][ERROR] Excepción HTTP', [
+                'message' => $e->getMessage()
+            ]);
+
+            throw $e;
+        }
+
+        $status  = $httpResponse->status();
+        $rawBody = $httpResponse->body();
+        $dte     = json_decode($rawBody, true);
+
+        Log::info('[MH][5] Respuesta HTTP MH', [
+            'status' => $status,
+            'raw'    => $rawBody,
+            'json'   => $dte,
+        ]);
+
+        // ============================
+        // 6. GUARDAR JSON FÍSICO
+        // ============================
+        $this->editarJsonHacienda(
+            $jsonEnco->identificacion->codigoGeneracion,
+            $rawBody,
+            $idEmpresa,
+            $fechaEmision
+        );
+
+        Log::info('[MH][6] JSON Hacienda guardado en archivo');
+
+        // ============================
+        // 7. GUARDAR RESPUESTA BD
+        // ============================
+        $test = $this->guardarRespuestaDTE(
+            $idFactura,
+            $status,
+            is_array($dte) ? $dte : []
+        );
+
+        Log::info('[MH][7] Resultado guardarRespuestaDTE', (array) $test);
+
+        if ($test->mensaje !== 'EXITO') {
+            Log::error('[MH][7][ERROR] No se pudo guardar respuesta DTE');
+            return $test;
+        }
+
+        // ============================
+        // 8. RESPUESTA FINAL
+        // ============================
+        if ($status === 200) {
+
+            Log::info('[MH][8] DTE PROCESADO OK', [
+                'estado'        => $dte['estado'] ?? null,
+                'selloRecibido' => $dte['selloRecibido'] ?? null,
+            ]);
+
+            $respuesta->mensaje          = 'EXITO';
+            $respuesta->estado           = $dte['estado'] ?? null;
+            $respuesta->observaciones    = $dte['observaciones'] ?? null;
+            $respuesta->excepcion        = $dte['descripcionMsg'] ?? null;
+            $respuesta->codigoGeneracion = $dte['codigoGeneracion'] ?? null;
+            $respuesta->selloRecibido    = $dte['selloRecibido'] ?? null;
+            $respuesta->idEncabezado     = $idFactura;
+            $respuesta->idSucursal       = $idSucursal;
+        } else {
+
+            Log::warning('[MH][8] DTE RECHAZADO', [
+                'estado' => $dte['estado'] ?? null,
+                'error'  => $dte['descripcionMsg'] ?? null,
+            ]);
+
+            $respuesta->mensaje          = 'RECHAZADO';
+            $respuesta->estado           = $dte['estado'] ?? null;
+            $respuesta->excepcion        = $dte['descripcionMsg'] ?? null;
+            $respuesta->observaciones    = $dte['observaciones'] ?? null;
+            $respuesta->codigoGeneracion = $jsonEnco->identificacion->codigoGeneracion;
+            $respuesta->numeroControl    = $jsonEnco->identificacion->numeroControl;
+            $respuesta->idEncabezado     = $idFactura;
+            $respuesta->idSucursal       = $idSucursal;
+        }
+
+        Log::info('[MH][FIN] recepciondte finalizada', (array) $respuesta);
+
+        return $respuesta;
+    }
+
+
+
+    private function obtenerToken(
+        EmpresaConfigTransmisionDte $config,
+        array $endpoints,
+        int $idSucursal
+    ): object {
+
+        $respuesta = new \stdClass();
+
+        try {
+
+            // ============================
+            // 1. BUSCAR TOKEN DEL DÍA
+            // ============================
+            $hoyFecha = Carbon::now()->format('Y-m-d');
+
+            $tokenRow = DB::table('facturacion_mh_tokens')
+                ->whereDate('fechaToken', $hoyFecha)
+                ->where('idEmpresa', $config->idEmpresa)
+                ->where('idSucursal', $idSucursal)
+                ->select(DB::raw('COUNT(*) as contador'), 'token')
+                ->groupBy('token')
+                ->first();
+
+
+
+            if ($tokenRow && $tokenRow->contador > 0) {
+
+                $respuesta->mensaje = 'EXITO';
+                $respuesta->token   = $tokenRow->token;
+                return $respuesta;
+            }
+
+            // ============================
+            // 2. NO EXISTE → PEDIR TOKEN
+            // ============================
+            $resToken = $this->getTokenApi($config, $endpoints['urlToken']);
+
+            if ($resToken->mensaje === 'EXITO') {
+                return $resToken;
+            }
+
+            return $resToken;
+        } catch (\Throwable $e) {
+
+            Log::error('Error obtenerToken()', [
+                'idEmpresa'  => $config->idEmpresa,
+                'idSucursal' => $idSucursal,
+                'exception'  => $e,
+            ]);
+
+            $respuesta->mensaje = 'ERROR_TOKEN';
+            $respuesta->error   = 'Error al obtener token de Hacienda';
+            return $respuesta;
+        }
+    }
+
+
+    private function getTokenApi(
+        EmpresaConfigTransmisionDte $config,
+        string $urlToken
+    ): object {
+
+        $respuesta = new \stdClass();
+
+        try {
+
+            // ============================
+            // 1. DATOS DE AUTENTICACIÓN
+            // ============================
+            $nit = str_replace('-', '', $config->empresa->nit);
+            $password = $config->passwordApi;
+
+            // ============================
+            // 2. REQUEST TOKEN MH
+            // ============================
+            $httpResponse = Http::asForm()
+                ->timeout(30)
+                ->post($urlToken, [
+                    'user' => $nit,
+                    'pwd'  => $password,
+                ]);
+
+            if (!$httpResponse->successful()) {
+                throw new \Exception('Error HTTP token MH');
+            }
+
+            $data = $httpResponse->json();
+
+            // ============================
+            // 3. VALIDAR RESPUESTA
+            // ============================
+            if (($data['status'] ?? '') !== 'OK') {
+
+                $respuesta->mensaje = 'NO_TOKEN';
+                $respuesta->descripcion = $data['body']['descripcion'] ?? $data['body'] ?? null;
+                return $respuesta;
+            }
+
+            $token = $data['body']['token'];
+
+            // ============================
+            // 4. GUARDAR TOKEN (MISMO LEGACY)
+            // ============================
+            DB::table('facturacion_mh_tokens')->insert([
+                'idEmpresa'   => $config->idEmpresa,
+                'idSucursal'  => $config->idSucursal ?? null,
+                'token'       => $token,
+                'fechaToken'  => Carbon::now()->format('Y-m-d'),
+            ]);
+
+            // ============================
+            // 5. RESPUESTA FINAL
+            // ============================
+            $respuesta->mensaje = 'EXITO';
+            $respuesta->token   = $token;
+        } catch (\Throwable $e) {
+
+            Log::error('Error getTokenApi()', [
+                'idEmpresa' => $config->idEmpresa,
+                'exception' => $e,
+            ]);
+
+            $respuesta->mensaje = 'ERROR_TOKEN';
+            $respuesta->error   = 'Error al obtener token MH';
+        }
+
+        return $respuesta;
+    }
+
+
+
+    private function crearJsonParteEncabezadoDetalle(
+        string $codigoGeneracion,
+        array|string $json,
+        int $idEmpresa,
+        string $fechaEmision
+    ): string {
+
+        $baseDir = public_path('recursos/json');
+
+        $dt = Carbon::parse($fechaEmision);
+        $yearMonth = $dt->format('Y-m');
+
+        $targetDir = $baseDir . DIRECTORY_SEPARATOR . $idEmpresa . DIRECTORY_SEPARATOR . $yearMonth;
+
+        if (!File::exists($targetDir)) {
+            File::makeDirectory($targetDir, 0775, true);
+        }
+
+        $filename = $idEmpresa . '_' . $codigoGeneracion . '.json';
+        $fullpath = $targetDir . DIRECTORY_SEPARATOR . $filename;
+
+        if (is_array($json)) {
+            $json = json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        }
+
+        file_put_contents($fullpath, $json, LOCK_EX);
+
+        return $fullpath;
+    }
+
+
+    private function editarJsonFirma(
+        string $codigoGeneracion,
+        string $jsonFirma,
+        int $idEmpresa,
+        string $fechaEmision
+    ): string {
+
+        $baseDir = public_path('recursos/json');
+        $yearMonth = Carbon::parse($fechaEmision)->format('Y-m');
+
+        $file = $baseDir . "/{$idEmpresa}/{$yearMonth}/{$idEmpresa}_{$codigoGeneracion}.json";
+
+        if (!File::exists($file)) {
+            file_put_contents($file, json_encode(new \stdClass()));
+        }
+
+        $contenido = json_decode(file_get_contents($file), true) ?? [];
+
+        $firma = json_decode($jsonFirma, true);
+        $contenido['firmaElectronica'] = $firma['body'] ?? $firma;
+
+        file_put_contents(
+            $file,
+            json_encode($contenido, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+            LOCK_EX
+        );
+
+        return $file;
+    }
+
+
+    private function editarJsonHacienda(
+        string $codigoGeneracion,
+        string $jsonHacienda,
+        int $idEmpresa,
+        string $fechaEmision
+    ): string {
+
+        $baseDir = public_path('recursos/json');
+        $yearMonth = Carbon::parse($fechaEmision)->format('Y-m');
+
+        $targetDir = $baseDir . DIRECTORY_SEPARATOR . $idEmpresa . DIRECTORY_SEPARATOR . $yearMonth;
+
+        if (!File::exists($targetDir)) {
+            File::makeDirectory($targetDir, 0775, true);
+        }
+
+        $file = $targetDir . DIRECTORY_SEPARATOR . "{$idEmpresa}_{$codigoGeneracion}.json";
+
+        // si no existe el archivo base, lo creamos vacío (igual que legacy para no romper)
+        if (!File::exists($file)) {
+            file_put_contents($file, json_encode(new \stdClass()), LOCK_EX);
+        }
+
+        $contenido = json_decode(file_get_contents($file), true) ?? [];
+
+        // si viene JSON válido lo guardamos como array, si no como string
+        $decoded = json_decode($jsonHacienda, true);
+        $contenido['respuestaHacienda'] = is_array($decoded) ? $decoded : $jsonHacienda;
+
+        file_put_contents(
+            $file,
+            json_encode($contenido, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+            LOCK_EX
+        );
+
+        return $file;
+    }
+
+
+
+    private function guardarRespuestaDTE(
+        int $idEncabezado,
+        int $statusHttp,
+        array $jsonMh
+    ): object {
+
+        $respuesta = new \stdClass();
+
+        try {
+
+            DB::table('facturacion_mh_dte_respuestas')->insert([
+                'idEncabezado'       => $idEncabezado,
+                'codigoStatus'       => (string) $statusHttp,
+
+                'versionDte'         => $jsonMh['version'] ?? null,
+                'ambiente'           => $jsonMh['ambiente'] ?? null,
+                'versionApp'         => null,
+
+                'estado'             => $jsonMh['estado'] ?? null,
+                'codigoGeneracion'   => $jsonMh['codigoGeneracion'] ?? null,
+                'selloRecibido'      => $jsonMh['selloRecibido'] ?? null,
+
+                'fechaProcesamiento' => now(),
+
+                'clasificaMsg'       => isset($jsonMh['clasificaMsg'])
+                    ? json_encode($jsonMh['clasificaMsg'], JSON_UNESCAPED_UNICODE)
+                    : null,
+
+                'codigoMsg'          => $jsonMh['codigoMsg'] ?? null,
+                'descripcionMsg'     => $jsonMh['descripcionMsg'] ?? null,
+
+                'observaciones'      => isset($jsonMh['observaciones'])
+                    ? json_encode($jsonMh['observaciones'], JSON_UNESCAPED_UNICODE)
+                    : null,
+
+                'jsonCompleto'       => json_encode($jsonMh, JSON_UNESCAPED_UNICODE),
+                'fechaRegistro'      => now(),
+            ]);
+
+            // Actualizar encabezado (como hacía el legacy)
+            DB::table('facturacion_encabezado')
+                ->where('id', $idEncabezado)
+                ->update([
+                    'estadoHacienda'       => $jsonMh['estado'] ?? null,
+                    'selloHacienda'        => $jsonMh['selloRecibido'] ?? null,
+                    'fechaTransmitenDte'   => now(),
+                ]);
+
+            $respuesta->mensaje = 'EXITO';
+            return $respuesta;
+        } catch (\Throwable $e) {
+
+            Log::error('Error guardarRespuestaDTE()', [
+                'idEncabezado' => $idEncabezado,
+                'exception'    => $e,
+            ]);
+
+            $respuesta->mensaje = 'ERROR';
+            $respuesta->error   = $e->getMessage();
+            return $respuesta;
         }
     }
 }

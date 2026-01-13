@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\mh\Departamento;
 use App\Models\mh\Municipio;
+use App\Models\mh\TipoEstablecimiento;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -43,6 +44,12 @@ class EmpresaSucursal extends Model
         'fechaRegistro' => 'datetime',
         'fechaElimina'  => 'datetime',
     ];
+
+
+    public function tipoEstablecimiento()
+    {
+        return $this->belongsTo(TipoEstablecimiento::class, 'idTipoEstablecimiento', 'id');
+    }
 
     public function departamento()
     {

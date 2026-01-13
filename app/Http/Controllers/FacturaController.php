@@ -6,7 +6,9 @@ use App\Models\catalogo\Cliente;
 use App\Models\catalogo\Producto;
 use App\Models\Empresa;
 use App\Models\EmpresaActividadEconomica;
+use App\Models\EmpresaConfigTransmisionDte;
 use App\Models\EmpresaSucursal;
+use App\Models\EmpresaPuntoVenta;
 use App\Models\Factura;
 use App\Models\FacturaDetalle;
 use App\Models\mh\CondicionVenta;
@@ -111,10 +113,7 @@ class FacturaController extends Controller
         //
     }
 
-    public function store(Request $request)
-    {
-
-        /* VALIDACIONES ADICIONALES
+    /* VALIDACIONES ADICIONALES
 
             recalcularTotales() {
                     console.log("------------- FUNCION RECALCULANDO TOTALES ------------------")
@@ -188,93 +187,263 @@ class FacturaController extends Controller
 
         */
 
+    public function store(Request $request)
+    {
         DB::beginTransaction();
 
         try {
 
-            $factura = new Factura();
+            // ============================
+            // 1. VERSION JSON
+            // ============================
+            switch ((int) $request->idTipoDte) {
+                case 1:
+                    $versionJson = 1;
+                    break;
+                case 2:
+                case 4:
+                case 6:
+                    $versionJson = 3;
+                    break;
+                case 9:
+                case 10:
+                    $versionJson = 1;
+                    break;
+                default:
+                    throw new \Exception('Tipo DTE no soportado');
+            }
 
-            $codigoGeneracion = strtoupper(Uuid::uuid4()->toString());
+            // ============================
+            // 2. CONFIG EMPRESA
+            // ============================
+            $config = EmpresaConfigTransmisionDte::where('idEmpresa', $request->idEmpresa)->firstOrFail();
+
+            // ============================
+            // 3. FACTURA
+            // ============================
+            $codigoGeneracion = strtoupper(\Ramsey\Uuid\Uuid::uuid4()->toString());
+
+            $datosControl = $this->crearNumeroControl(
+                $request->idEmpresa,
+                $request->idSucursal,
+                $request->idPuntoVenta,
+                $request->idTipoDte
+            );
+
+            if ($datosControl->mensaje !== 'EXITO') {
+                throw new \Exception($datosControl->excepcion);
+            }
+
+            $factura = new Factura();
+            $factura->idNumeroControl = $datosControl->idNumeroControl;
+            $factura->numeroControl   = $datosControl->numeroControl;
+            $factura->codigoGeneracion = $codigoGeneracion;
 
             $factura->idEmpresa        = $request->idEmpresa;
             $factura->idSucursal       = $request->idSucursal;
+            $factura->idPuntoVenta     = $request->idPuntoVenta;
             $factura->idTipoDte        = $request->idTipoDte;
+            $factura->versionJson      = $versionJson;
             $factura->idCliente        = $request->idCliente;
-            $factura->fechaHoraEmision = Carbon::now();
 
-            $factura->subTotal       = $request->subTotal;
-            $factura->totalDescuento = $request->totalDescuento ?? 0;
-            $factura->totalGravada   = $request->totalGravada;
-            $factura->totalIVA       = $request->totalIVA;
-            $factura->totalPagar     = $request->totalPagar;
+            $factura->fechaHoraEmision = Carbon::now();
+            $factura->idAmbiente       = $config->idTipoAmbiente;
+            $factura->idTipoFacturacion = 1;
+            $factura->idTipoTransmision = 1;
 
             $factura->idCondicionVenta = $request->idCondicionVenta;
             $factura->idPlazo          = $request->idPlazo ?? null;
             $factura->diasCredito      = $request->diasCredito ?? null;
 
-            $factura->estadoHacienda   = "COTIZACION";
-            $factura->codigoGeneracion = $codigoGeneracion;
-
-            $factura->eliminado = 'N';
+            $factura->estadoHacienda   = 'COTIZACION';
+            $factura->eliminado        = 'N';
             $factura->fechaRegistraOrden = Carbon::now();
-            $factura->idUsuarioRegistraOrden = auth()->id();
+            $factura->idUsuarioRegistraOrden = $request->idUsuario;
+
+            // Totales iniciales
+            $factura->subTotal     = 0;
+            $factura->totalGravada = 0;
+            $factura->totalIVA     = 0;
+            $factura->totalPagar   = 0;
 
             $factura->save();
 
+            // ============================
+            // 4. DETALLES (2 DECIMALES)
+            // ============================
+            $totalGravada = 0;
+            $totalIva     = 0;
 
-            foreach ($request->items as $index => $item) {
+            foreach ($request->items as $item) {
 
-                $producto = Producto::find($item['idProducto']);
+                $producto = Producto::findOrFail($item['idProducto']);
+
+                $cantidad = round((float) $item['cantidad'], 2);
+                $precioUnitario = round((float) $item['precioUnitario'], 2); // CON IVA
+
+                // TOTAL ITEM CON IVA
+                $totalItem = round($cantidad * $precioUnitario, 2);
+
+                // IVA MH
+                $ivaItem = round($totalItem * 13 / 113, 2);
+
+                // BASE GRAVADA
+                $gravada = round($totalItem - $ivaItem, 2);
 
                 $detalle = new FacturaDetalle();
-
                 $detalle->idEncabezado   = $factura->id;
-                $detalle->idProducto     = $item['idProducto'];
+                $detalle->idProducto     = $producto->id;
                 $detalle->idTipoItem     = $producto->idTipoItem;
                 $detalle->idUnidadMedida = $item['idUnidadMedida'];
 
-                $detalle->cantidad       = $item['cantidad'];
-                $detalle->precioUnitario = $item['precioUnitario'];
+                $detalle->cantidad       = $cantidad;
+                $detalle->precioUnitario = $precioUnitario;
 
-                $detalle->porcentajeDescuento = $item['porcentajeDescuento'] ?? 0;
-                $detalle->descuento            = $item['descuento'] ?? 0;
+                $detalle->porcentajeDescuento = 0;
+                $detalle->descuento            = 0;
 
-                $detalle->gravadas = $item['gravadas'];
-                $detalle->excentas = $item['excentas'] ?? 0;
-                $detalle->iva      = $item['iva'];
+                // 🔥 SOLO 2 DECIMALES
+                $detalle->gravadas = $gravada;
+                $detalle->excentas = 0;
+                $detalle->iva      = $ivaItem;
 
                 $detalle->motivoCambioPrecio = $item['motivoCambioPrecio'] ?? null;
-
                 $detalle->save();
+
+                $totalGravada += $gravada;
+                $totalIva     += $ivaItem;
             }
+
+            // ============================
+            // 5. TOTALES FINALES
+            // ============================
+            $totalGravada = round($totalGravada, 2);
+            $totalIva     = round($totalIva, 2);
+
+            $factura->subTotal     = $totalGravada;
+            $factura->totalGravada = $totalGravada;
+            $factura->totalIVA     = $totalIva;
+            $factura->totalPagar  = round($totalGravada + $totalIva, 2);
+            $factura->save();
 
             DB::commit();
 
-
             return response()->json([
-                'success' => true,
+                'success'   => true,
                 'idFactura' => $factura->id
             ], 201);
         } catch (\Throwable $e) {
 
             DB::rollBack();
 
-            // ❌ LOG DE ERROR COMPLETO
-            Log::error('FACTURA STORE - ERROR', [
+            Log::error('FACTURA STORE ERROR', [
                 'message' => $e->getMessage(),
                 'file'    => $e->getFile(),
                 'line'    => $e->getLine(),
-                'trace'   => $e->getTraceAsString(),
                 'request' => $request->all()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear factura',
                 'error'   => $e->getMessage()
             ], 500);
         }
     }
+
+
+
+
+
+    private function crearNumeroControl(
+        int $idEmpresa,
+        int $idSucursal,
+        int $idPuntoVenta,
+        int $idTipoDte
+    ): object {
+
+        $respuesta = new \stdClass();
+
+        try {
+
+            // ============================
+            // 1. AÑO ACTUAL (MISMO LEGACY)
+            // ============================
+            $anioActual = Carbon::now()->format('Y-01-01');
+
+            // ============================
+            // 2. OBTENER ÚLTIMO CORRELATIVO
+            // ============================
+            $ultimo = DB::table('facturacion_correlativos_numero_control')
+                ->where('idEmpresa', $idEmpresa)
+                ->where('idSucursal', $idSucursal)
+                ->where('idTipoDte', $idTipoDte)
+                ->where('anio', $anioActual)
+                ->orderByDesc('correlativo')
+                ->first();
+
+            if ($ultimo) {
+                $correlativo = ($ultimo->correlativo == 0)
+                    ? 1
+                    : ($ultimo->correlativo + 1);
+            } else {
+                $correlativo = 1;
+            }
+
+            // ============================
+            // 3. CÓDIGOS (TUS MÉTODOS)
+            // ============================
+            $codigoDocTributario = TipoDocumentoTributario::where('id', $idTipoDte)->first()->codigo;
+            $codigoSucursal      = EmpresaSucursal::where('id', $idSucursal)->first()->codigoEstablecimiento;
+            $codigoPuntoVenta    = EmpresaPuntoVenta::where('id', $idPuntoVenta)->first()->codigoPuntoVentaMh;
+
+            // ============================
+            // 4. ARMAR NÚMERO CONTROL
+            // ============================
+            $numeroControl = sprintf(
+                'DTE-%s-%s%s-%015d',
+                $codigoDocTributario,
+                $codigoSucursal,
+                $codigoPuntoVenta,
+                $correlativo
+            );
+
+            // ============================
+            // 5. INSERTAR CORRELATIVO
+            // ============================
+            $idInsertado = DB::table('facturacion_correlativos_numero_control')
+                ->insertGetId([
+                    'idEmpresa'     => $idEmpresa,
+                    'idSucursal'    => $idSucursal,
+                    'idPuntoVenta'  => $idPuntoVenta,
+                    'idTipoDte'     => $idTipoDte,
+                    'correlativo'   => $correlativo,
+                    'numeroControl' => $numeroControl,
+                    'anio'          => $anioActual,
+                ]);
+
+            // ============================
+            // 6. RESPUESTA
+            // ============================
+            $respuesta->mensaje         = 'EXITO';
+            $respuesta->numeroControl   = $numeroControl;
+            $respuesta->idNumeroControl = $idInsertado;
+        } catch (\Throwable $e) {
+
+            \Log::error('Error crearNumeroControl()', [
+                'idEmpresa'  => $idEmpresa,
+                'idSucursal' => $idSucursal,
+                'idTipoDte'  => $idTipoDte,
+                'exception'  => $e,
+            ]);
+
+            $respuesta->mensaje   = 'ERROR';
+            $respuesta->excepcion = $e->getMessage();
+        }
+
+        return $respuesta;
+    }
+
+
 
     public function emitir($id)
     {

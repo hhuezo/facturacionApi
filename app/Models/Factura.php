@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\catalogo\Cliente;
+use App\Models\mh\Ambiente;
 use App\Models\mh\TipoDocumentoTributario;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -140,6 +141,11 @@ class Factura extends Model
         return $this->belongsTo(EmpresaSucursal::class, 'idSucursal');
     }
 
+      public function puntoVenta()
+    {
+        return $this->belongsTo(EmpresaPuntoVenta::class, 'idPuntoVenta');
+    }
+
     public function tipoDocumentoTributario()
     {
         return $this->belongsTo(TipoDocumentoTributario::class, 'idTipoDte');
@@ -148,6 +154,11 @@ class Factura extends Model
     public function usuario()
     {
         return $this->belongsTo(Usuario::class, 'idUsuarioRegistraOrden');
+    }
+
+     public function ambiente()
+    {
+        return $this->belongsTo(Ambiente::class, 'idAmbiente');
     }
 
     public function detalles()

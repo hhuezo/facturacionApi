@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Empresa;
+use App\Models\EmpresaPuntoVenta;
 use App\Models\EmpresaSucursal;
 use App\Models\Factura;
 use App\Models\UsuarioEmpresa;
@@ -74,9 +75,15 @@ class AuthController extends Controller
                 ->orderBy('id')
                 ->first();
 
+            $idPuntoVenta = EmpresaPuntoVenta::where('idSucursal', $sucursal?->id)
+                ->where('eliminado', 'N')
+                ->orderBy('id')
+                ->value('id');
+
 
             $datosUsuario->idSucursal = $sucursal?->id;
             $datosUsuario->nombreSucursal = $sucursal?->nombreSucursal;
+            $datosUsuario->idPuntoVenta = $idPuntoVenta;
 
             $datosUsuario->empresas = $empresas;
 
