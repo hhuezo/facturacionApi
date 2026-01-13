@@ -43,7 +43,7 @@ class ClienteController extends Controller
     public function create(Request $request)
     {
 
-        $empresas = Empresa::select('id', 'nombre')
+        $empresas = Empresa::select('id', 'nombreComercial as nombre')
             ->where('eliminado', 'N')->whereIn('id', [$request->idEmpresa])->get();
 
         return response()->json([
@@ -165,7 +165,7 @@ class ClienteController extends Controller
 
 
         $cliente = Cliente::find($id);
-        $empresas = Empresa::select('id', 'nombre')
+        $empresas = Empresa::select('id', 'nombreComercial as nombre')
             ->where('eliminado', 'N')->whereIn('id', [$request->idEmpresa])->get();
 
         return response()->json([
