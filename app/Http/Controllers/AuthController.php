@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Empresa;
+use App\Models\EmpresaSucursal;
 use App\Models\Factura;
 use App\Models\UsuarioEmpresa;
 use Illuminate\Http\Request;
@@ -62,7 +64,23 @@ class AuthController extends Controller
 
             unset($datosUsuario->clave);
 
+
+            $sucursal = EmpresaSucursal::whereIn(
+                'idEmpresa',
+                $empresas->pluck('id')
+            )
+                ->where('eliminado', 'N')
+                ->select('id', 'nombreSucursal')
+                ->orderBy('id')
+                ->first();
+
+
+            $datosUsuario->idSucursal = $sucursal?->id;
+            $datosUsuario->nombreSucursal = $sucursal?->nombreSucursal;
+
             $datosUsuario->empresas = $empresas;
+
+
 
             // Respuesta OK
             return response()->json([
@@ -118,6 +136,30 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => $empresas
+            ], 200);
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'ERROR_INTERNO'
+            ], 500);
+        }
+    }
+
+
+    public function getSucursales(int $id): JsonResponse
+    {
+        try {
+
+            $sucursales = EmpresaSucursal::where('idEmpresa', $id)
+                ->where('eliminado', 'N')
+                ->select('id', 'nombreSucursal as nombre')
+                ->get();
+
+
+            return response()->json([
+                'success' => true,
+                'data'    => $sucursales
             ], 200);
         } catch (\Throwable $e) {
 

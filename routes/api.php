@@ -28,6 +28,7 @@ Route::post('login', [AuthController::class, 'login']);
 Route::get('home/{empresaId}', [AuthController::class, 'home']);
 
 Route::get('user/{id}/empresa', [AuthController::class, 'getEmpresas']);
+Route::get('empresa/{id}/sucursal', [AuthController::class, 'getSucursales']);
 
 
 Route::get('cliente', [ClienteController::class, 'index']);

@@ -192,15 +192,12 @@ class FacturaController extends Controller
 
         try {
 
-
-            $sucursal = EmpresaSucursal::where('idEmpresa', $request->idEmpresa)->first();
-
             $factura = new Factura();
 
             $codigoGeneracion = strtoupper(Uuid::uuid4()->toString());
 
             $factura->idEmpresa        = $request->idEmpresa;
-            $factura->idSucursal       = $sucursal->id;
+            $factura->idSucursal       = $request->idSucursal;
             $factura->idTipoDte        = $request->idTipoDte;
             $factura->idCliente        = $request->idCliente;
             $factura->fechaHoraEmision = Carbon::now();
