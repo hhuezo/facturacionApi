@@ -27,12 +27,32 @@ class FacturaController extends Controller
     {
         $idEmpresa = $request->idEmpresa ?? 0;
 
+        $filtro = $request->filtro ?? 'Diario'; // Recibimos el string desde Android
+
+        // Definimos la fecha de inicio por defecto (hoy)
+        $fechaInicio = Carbon::now()->startOfDay();
+        $fechaFin = Carbon::now()->endOfDay();
+
+        // Ajustamos la fecha de inicio según el filtro
+        switch ($filtro) {
+            case 'Semanal':
+                $fechaInicio = Carbon::now()->subDays(7)->startOfDay();
+                break;
+            case 'Quincenal':
+                $fechaInicio = Carbon::now()->subDays(15)->startOfDay();
+                break;
+            case 'Mensual':
+                $fechaInicio = Carbon::now()->subMonth()->startOfDay();
+                break;
+            case 'Diario':
+            default:
+                $fechaInicio = Carbon::now()->startOfDay();
+                break;
+        }
+
         $facturas = Factura::with(['cliente', 'empresa', 'tipoDocumentoTributario', 'usuario'])
             ->where('idEmpresa', $idEmpresa)
-            ->whereBetween('fechaRegistraOrden', [
-                Carbon::now()->subMonth()->startOfDay(),
-                Carbon::now()->endOfDay()
-            ])
+            ->whereBetween('fechaRegistraOrden', [$fechaInicio, $fechaFin])
             ->orderBy('facturacion_encabezado.id', 'desc')
             ->get()
             ->toArray();
