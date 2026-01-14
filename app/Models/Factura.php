@@ -108,13 +108,6 @@ class Factura extends Model
 
     protected $casts = [
 
-        'fechaHoraEmision'        => 'datetime',
-        'fechaRecibidoHacienda'  => 'datetime',
-        'fechaInvalidacion'      => 'datetime',
-        'fechaRegistraOrden'     => 'datetime',
-        'fechaTransmitenDte'     => 'datetime',
-        'fechaEliminacion'       => 'datetime',
-
         'totalNoSujeta'          => 'decimal:4',
         'totalExenta'            => 'decimal:4',
         'totalGravada'           => 'decimal:4',
