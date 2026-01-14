@@ -106,6 +106,7 @@ class FacturaController extends Controller
                 $q->select('id', 'nombre');
             }
         ])
+            ->where('eliminado', 'N')
             ->where('idEmpresa', $idEmpresa)->get();
         $tiposPlazo = TipoPlazo::select('id', 'nombre')->get();
         $condicionesVenta = CondicionVenta::select('id', 'nombre')->get();
@@ -115,6 +116,7 @@ class FacturaController extends Controller
             }
         ])
             ->where('idEmpresa', $idEmpresa)
+            ->where('eliminado', 'N')
             ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento')
             ->get();
 
@@ -672,6 +674,7 @@ class FacturaController extends Controller
                 $q->select('id', 'nombre');
             }
         ])
+            ->where('eliminado', 'N')
             ->where('idEmpresa', $idEmpresa)->get();
         $tiposPlazo = TipoPlazo::select('id', 'nombre')->get();
         $condicionesVenta = CondicionVenta::select('id', 'nombre')->get();
@@ -681,6 +684,7 @@ class FacturaController extends Controller
             }
         ])
             ->where('idEmpresa', $idEmpresa)
+            ->where('eliminado', 'N')
             ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento')
             ->get();
 
