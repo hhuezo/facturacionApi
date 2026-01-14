@@ -545,7 +545,6 @@ class FacturaController extends Controller
     public function ticketJson($id)
     {
         try {
-
             $factura = Factura::with([
                 'cliente',
                 'empresa',
@@ -565,48 +564,46 @@ class FacturaController extends Controller
                 'success' => true,
                 'data' => [
                     'empresa' => [
-                        'nombre' => $factura->empresa->nombre,
-                        'direccion' => $factura->empresa->direccion,
-                        'nit' => $factura->empresa->nit,
+                        // Usamos optional() por si la relación empresa es null
+                        'nombre'    => optional($factura->empresa)->nombre ?? 'Nombre no disponible',
+                        'direccion' => optional($factura->empresa)->direccion ?? '',
+                        'nit'       => optional($factura->empresa)->nit ?? '',
                     ],
                     'documento' => [
-                        'tipo' => strtoupper($factura->tipoDocumentoTributario->nombre ?? ''),
+                        'tipo'             => strtoupper($factura->tipoDocumentoTributario->nombre ?? 'DOCUMENTO'),
                         'codigoGeneracion' => $factura->codigoGeneracion,
-                        'numeroControl' => $factura->numeroControl,
-                        'fecha' => $factura->fechaHoraEmision->format('Y-m-d H:i'),
-                        'caja' => $factura->sucursal->nombreSucursal ?? 'Caja',
+                        'numeroControl'    => $factura->numeroControl,
+                        // SOLUCIÓN AL ERROR: Convertimos a Carbon antes de formatear
+                        'fecha'            => Carbon::parse($factura->fechaHoraEmision)->format('d/m/Y H:i'),
+                        'caja'             => $factura->sucursal->nombreSucursal ?? 'Caja Principal',
                     ],
                     'cliente' => [
-                        'nombre' => $factura->cliente->nombreCliente ?? '',
+                        'nombre'    => $factura->cliente->nombreCliente ?? 'CLIENTE GENERAL',
                         'documento' => $factura->cliente->numeroDocumento ?? '',
                         'direccion' => $factura->cliente->direccion ?? '',
                     ],
                     'items' => $factura->detalles->map(function ($item) {
                         return [
-                            'cantidad' => number_format($item->cantidad, 2),
-                            'descripcion' => $item->producto->nombre ?? 'Servicio',
-                            'total' => number_format(
-                                $item->gravadas + $item->iva,
-                                2
-                            ),
+                            'cantidad'    => number_format((float)$item->cantidad, 2),
+                            'descripcion' => $item->producto->nombre ?? 'Producto/Servicio',
+                            'total'       => number_format((float)($item->gravadas + $item->iva), 2),
                         ];
                     }),
                     'totales' => [
-                        'subtotal' => number_format($factura->subTotal, 2),
-                        'iva' => number_format($factura->totalIVA, 2),
-                        'total' => number_format($factura->totalPagar, 2),
+                        'subtotal' => number_format((float)$factura->subTotal, 2),
+                        'iva'      => number_format((float)$factura->totalIVA, 2),
+                        'total'    => number_format((float)$factura->totalPagar, 2),
                     ],
                 ]
             ]);
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Error al generar ticket',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
-
 
 
     /*public function reportePdf($id)
