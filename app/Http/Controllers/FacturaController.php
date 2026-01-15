@@ -621,7 +621,7 @@ class FacturaController extends Controller
         ])
             ->where('idEmpresa', $idEmpresa)
             ->where('eliminado', 'N')
-            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento')
+            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento','excento')
             ->get();
 
         return response()->json([
