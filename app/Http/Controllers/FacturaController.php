@@ -245,9 +245,9 @@ class FacturaController extends Controller
                 $producto = Producto::findOrFail($item['idProducto']);
 
                 $cantidad = round((float) $item['cantidad'], 2);
-                $precioUnitario = round((float) $item['precioUnitario'], 2); // YA SIN IVA
+                $precioUnitario = round((float) $item['precioUnitario'], 6); // YA SIN IVA
 
-                $baseItem = round($cantidad * $precioUnitario, 2);
+                $baseItem = round($cantidad * $precioUnitario, 6);
 
                 $productoEsExento = $producto->excento === 'S';
                 $esExento = $clienteEsExento || $productoEsExento;
@@ -260,7 +260,7 @@ class FacturaController extends Controller
                     $ivaItem = 0;
                 } else {
                     $excenta = 0;
-                    $ivaItem = round($baseItem * 0.13, 2);
+                    $ivaItem = round($baseItem * 0.13, 6);
                 }
 
                 $detalle = new FacturaDetalle();
