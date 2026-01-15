@@ -86,7 +86,7 @@ class ProductoController extends Controller
                 'nombre'               => 'required|string|max:1500',
                 'idTipoItem'           => 'required|integer',
                 'idUnidadMedida'       => 'required|integer',
-                'precioUnitarioConIva' => 'required|numeric', // Verifica si acepta el string "100"
+                'precioUnitarioConIva' => 'required|numeric',
                 'poseeDescuento'       => 'required|in:S,N',
                 'excento'               => 'required|in:S,N',
             ]);
@@ -102,6 +102,7 @@ class ProductoController extends Controller
             $producto->poseeDescuento   = $request->poseeDescuento;
             $producto->excento           = $request->excento;
             $producto->eliminado        = 'N';
+            $producto->mostrarEnInventario = "S";
             $producto->fechaRegistra    = Carbon::now();
             $producto->idUsuarioRegistra = $request->idUsuario;
 

@@ -121,7 +121,7 @@ class FacturaController extends Controller
         ])
             ->where('idEmpresa', $idEmpresa)
             ->where('eliminado', 'N')
-            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento')
+            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento', 'excento')
             ->get();
 
 
@@ -139,79 +139,8 @@ class FacturaController extends Controller
         //
     }
 
-    /* VALIDACIONES ADICIONALES
-
-            recalcularTotales() {
-                    console.log("------------- FUNCION RECALCULANDO TOTALES ------------------")
-                    // Inicializar totales
-                    this.totalExcenta = 0;
-                    this.totalGravada = 0;
-                    this.totalDescuento = 0;
-                    this.ivaVenta = 0;
-                    this.subTotal = 0;
-                    this.totalPagar = 0;
-                    this.totalFletes = 0;
-                    this.totalSeguros = 0;
-                    this.retencionIVA1 = 0;
-                    this.tmpRentaServicios = 0;
-
-                    var idTipoDte = parseInt(document.getElementById("idTipoDte").value.trim()) || parseInt(facturar.idTipoDte.value);
-                    var idTipoContribuyente = parseInt(this.idTipoContribuyente) || 1;
-                    console.log("id Tipo DTE para recalcular es: " + idTipoDte);
 
 
-                    this.detalleProductos.forEach(item => {
-                        // aca se le calcula el iva por aparte solo a los CCF y a las NC
-                        let totalIva = (idTipoDte === 2 || idTipoDte === 4) ? item.gravada * this.porcentajeIVA : 0.00;
-                        console.log("el total de iva es: " + totalIva)
-                        console.log("Id tipo DTEE: " + idTipoDte)
-                        // Sumar a los totales
-                        this.totalExcenta += Number(item.excento);
-                        this.totalGravada += Number(item.gravada);
-                        this.ivaVenta += totalIva;
-                        this.tmpRentaServicios += Number(item.rentaPorServicios);
-
-                    });
-                    // si es CCF y a las NC y si es gran contribuyente
-                    if ((idTipoDte === 2 || idTipoDte === 4) && idTipoContribuyente === 4) {
-                        if (this.totalGravada > 100) {
-                            this.retencionIVA1 = this.totalGravada * 0.01; // Retención del 1% sobre el IVA
-                        } else {
-                            this.retencionIVA1 = 0;
-                        }
-                    }
-                    // si es consumidor final y es gran contribuyente
-                    if (idTipoDte === 1 && idTipoContribuyente === 4) {
-                        var tmpGravadaSinIVA = this.totalGravada / 1.13;
-                        if (tmpGravadaSinIVA > 100) {
-                            this.retencionIVA1 = tmpGravadaSinIVA * 0.01; // Retención del 1% sobre el IVA
-                        } else {
-                            this.retencionIVA1 = 0;
-                        }
-                    }
-                    console.log("IVA Retenido 1%: " + this.retencionIVA1);
-                    this.totalSeguros = parseFloat(document.getElementById("txtSeguro").value.trim()) || 0;
-                    this.totalFletes = parseFloat(document.getElementById("txtFletes").value.trim()) || 0;
-
-                    // Calcular subtotal y total a pagar
-                    this.subTotal = this.totalExcenta + this.totalGravada;
-                    // Sujeto Excluido calcularemos el 10% de la renta
-                    if (idTipoDte === 10) {
-                        this.totalRetencionRenta = this.subTotal * 0.10;
-                    }
-                    console.log("renta por servcicios: " + this.tmpRentaServicios);
-                    console.log("tipo dte para evaluar renta en servicios es: " + idTipoDte);
-                    if (idTipoDte === 1 || (idTipoDte === 2 || idTipoDte === 4) && this.tmpRentaServicios > 0) {
-                        console.log("ingreso ala a la retencion por servicios");
-                        this.totalRetencionRenta = this.tmpRentaServicios;
-                    }
-
-                    this.totalPagar = (this.subTotal + this.ivaVenta + this.totalSeguros + this.totalFletes) - (this.totalRetencionRenta + this.retencionIVA1);
-                },
-
-
-
-        */
 
     public function store(Request $request)
     {
@@ -242,10 +171,18 @@ class FacturaController extends Controller
             // ============================
             // 2. CONFIG EMPRESA
             // ============================
-            $config = EmpresaConfigTransmisionDte::where('idEmpresa', $request->idEmpresa)->firstOrFail();
+            $config = EmpresaConfigTransmisionDte::where('idEmpresa', $request->idEmpresa)
+                ->firstOrFail();
 
             // ============================
-            // 3. FACTURA
+            // 3. CLIENTE
+            // ============================
+            $cliente = Cliente::findOrFail($request->idCliente);
+            $clienteEsExento = $cliente->esExento === 'S';
+            $idTipoContribuyente = (int) $cliente->idTipoContribuyente;
+
+            // ============================
+            // 4. FACTURA
             // ============================
             $codigoGeneracion = strtoupper(\Ramsey\Uuid\Uuid::uuid4()->toString());
 
@@ -265,12 +202,12 @@ class FacturaController extends Controller
             $factura->numeroControl   = $datosControl->numeroControl;
             $factura->codigoGeneracion = $codigoGeneracion;
 
-            $factura->idEmpresa        = $request->idEmpresa;
-            $factura->idSucursal       = $request->idSucursal;
-            $factura->idPuntoVenta     = $request->idPuntoVenta;
-            $factura->idTipoDte        = $request->idTipoDte;
-            $factura->versionJson      = $versionJson;
-            $factura->idCliente        = $request->idCliente;
+            $factura->idEmpresa    = $request->idEmpresa;
+            $factura->idSucursal   = $request->idSucursal;
+            $factura->idPuntoVenta = $request->idPuntoVenta;
+            $factura->idTipoDte    = $request->idTipoDte;
+            $factura->versionJson  = $versionJson;
+            $factura->idCliente    = $request->idCliente;
 
             $factura->fechaHoraEmision = Carbon::now();
             $factura->idAmbiente       = $config->idTipoAmbiente;
@@ -286,7 +223,7 @@ class FacturaController extends Controller
             $factura->fechaRegistraOrden = Carbon::now();
             $factura->idUsuarioRegistraOrden = $request->idUsuario;
 
-            // Totales iniciales
+            // Iniciales
             $factura->subTotal     = 0;
             $factura->totalGravada = 0;
             $factura->totalIVA     = 0;
@@ -295,26 +232,36 @@ class FacturaController extends Controller
             $factura->save();
 
             // ============================
-            // 4. DETALLES (2 DECIMALES)
+            // 5. DETALLES
             // ============================
             $totalGravada = 0;
+            $totalExcenta = 0;
             $totalIva     = 0;
+
+            $tmpRentaServicios = 0;
 
             foreach ($request->items as $item) {
 
                 $producto = Producto::findOrFail($item['idProducto']);
 
                 $cantidad = round((float) $item['cantidad'], 2);
-                $precioUnitario = round((float) $item['precioUnitario'], 2); // CON IVA
+                $precioUnitario = round((float) $item['precioUnitario'], 2); // YA SIN IVA
 
-                // TOTAL ITEM CON IVA
-                $totalItem = round($cantidad * $precioUnitario, 2);
+                $baseItem = round($cantidad * $precioUnitario, 2);
 
-                // IVA MH
-                $ivaItem = round($totalItem * 13 / 113, 2);
+                $productoEsExento = $producto->excento === 'S';
+                $esExento = $clienteEsExento || $productoEsExento;
 
-                // BASE GRAVADA
-                $gravada = round($totalItem - $ivaItem, 2);
+                // BASE SIEMPRE
+                $gravada = $baseItem;
+
+                if ($esExento) {
+                    $excenta = $baseItem;
+                    $ivaItem = 0;
+                } else {
+                    $excenta = 0;
+                    $ivaItem = round($baseItem * 0.13, 2);
+                }
 
                 $detalle = new FacturaDetalle();
                 $detalle->idEncabezado   = $factura->id;
@@ -328,28 +275,84 @@ class FacturaController extends Controller
                 $detalle->porcentajeDescuento = 0;
                 $detalle->descuento            = 0;
 
-                // 🔥 SOLO 2 DECIMALES
                 $detalle->gravadas = $gravada;
-                $detalle->excentas = 0;
+                $detalle->excentas = $excenta;
                 $detalle->iva      = $ivaItem;
 
                 $detalle->motivoCambioPrecio = $item['motivoCambioPrecio'] ?? null;
                 $detalle->save();
 
-                $totalGravada += $gravada;
+                if ($excenta > 0) {
+                    $totalExcenta += $excenta;
+                } else {
+                    $totalGravada += $gravada;
+                }
+
                 $totalIva     += $ivaItem;
+
+                $tmpRentaServicios += (float) ($item['rentaPorServicios'] ?? 0);
             }
 
             // ============================
-            // 5. TOTALES FINALES
+            // 6. RETENCIONES
             // ============================
-            $totalGravada = round($totalGravada, 2);
-            $totalIva     = round($totalIva, 2);
+            $idTipoDte = (int) $request->idTipoDte;
 
-            $factura->subTotal     = $totalGravada;
+            $retencionIVA1 = 0;
+            $totalRetencionRenta = 0;
+
+            // Retención IVA 1%
+            if (
+                ($idTipoDte === 2 || $idTipoDte === 4 || $idTipoDte === 1) &&
+                $idTipoContribuyente === 4 &&
+                $totalGravada > 100
+            ) {
+                $retencionIVA1 = round($totalGravada * 0.01, 2);
+            }
+
+            // Subtotal real
+            $subTotal = round($totalGravada + $totalExcenta, 2);
+
+            // Retención renta
+            if ($idTipoDte === 10) {
+                $totalRetencionRenta = round($subTotal * 0.10, 2);
+            }
+
+            if (
+                $idTipoDte === 1 ||
+                (($idTipoDte === 2 || $idTipoDte === 4) && $tmpRentaServicios > 0)
+            ) {
+                $totalRetencionRenta = round($tmpRentaServicios, 2);
+            }
+
+            $totalSeguros = (float) ($request->totalSeguros ?? 0);
+            $totalFletes  = (float) ($request->totalFletes ?? 0);
+
+            // ============================
+            // 7. TOTAL FINAL
+            // ============================
+            $totalPagar = round(
+                ($subTotal + $totalIva + $totalSeguros + $totalFletes)
+                    - ($totalRetencionRenta + $retencionIVA1),
+                2
+            );
+
+            // ============================
+            // 8. GUARDAR TOTALES
+            // ============================
+            $factura->subTotal     = $subTotal;
             $factura->totalGravada = $totalGravada;
+            $factura->totalExenta  = $totalExcenta;
             $factura->totalIVA     = $totalIva;
-            $factura->totalPagar  = round($totalGravada + $totalIva, 2);
+
+            $factura->ivaRetenido1   = $retencionIVA1;
+            $factura->retencionRenta = $totalRetencionRenta;
+
+            $factura->seguros = $totalSeguros;
+            $factura->fletes  = $totalFletes;
+
+            $factura->totalPagar = $totalPagar;
+
             $factura->save();
 
             DB::commit();
@@ -375,6 +378,7 @@ class FacturaController extends Controller
             ], 500);
         }
     }
+
 
 
 
@@ -545,6 +549,7 @@ class FacturaController extends Controller
     public function ticketJson($id)
     {
         try {
+
             $factura = Factura::with([
                 'cliente',
                 'empresa',
@@ -563,32 +568,62 @@ class FacturaController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
+
+                    // ============================
+                    // EMPRESA
+                    // ============================
                     'empresa' => [
-                        // Usamos optional() por si la relación empresa es null
                         'nombre'    => optional($factura->empresa)->nombre ?? 'Nombre no disponible',
                         'direccion' => optional($factura->empresa)->direccion ?? '',
                         'nit'       => optional($factura->empresa)->nit ?? '',
                     ],
+
+                    // ============================
+                    // DOCUMENTO
+                    // ============================
                     'documento' => [
                         'tipo'             => strtoupper($factura->tipoDocumentoTributario->nombre ?? 'DOCUMENTO'),
                         'codigoGeneracion' => $factura->codigoGeneracion,
                         'numeroControl'    => $factura->numeroControl,
-                        // SOLUCIÓN AL ERROR: Convertimos a Carbon antes de formatear
                         'fecha'            => Carbon::parse($factura->fechaHoraEmision)->format('d/m/Y H:i'),
                         'caja'             => $factura->sucursal->nombreSucursal ?? 'Caja Principal',
                     ],
+
+                    // ============================
+                    // CLIENTE
+                    // ============================
                     'cliente' => [
                         'nombre'    => $factura->cliente->nombreCliente ?? 'CLIENTE GENERAL',
                         'documento' => $factura->cliente->numeroDocumento ?? '',
                         'direccion' => $factura->cliente->direccion ?? '',
                     ],
+
+                    // ============================
+                    // ITEMS
+                    // ============================
                     'items' => $factura->detalles->map(function ($item) {
+
+                        $totalItem = 0;
+                        if ((float)$item->excentas > 0) {
+                            $totalItem = (float)$item->excentas;
+                        } else {
+                            $totalItem = (float)$item->gravadas;
+                        }
+                        /* $totalItem  =
+                            (float)$item->gravadas +
+                            (float)$item->excentas +
+                            (float)$item->iva;*/
+
                         return [
                             'cantidad'    => number_format((float)$item->cantidad, 2),
                             'descripcion' => $item->producto->nombre ?? 'Producto/Servicio',
-                            'total'       => number_format((float)($item->gravadas + $item->iva), 2),
+                            'total'       => number_format($totalItem, 2),
                         ];
                     }),
+
+                    // ============================
+                    // TOTALES
+                    // ============================
                     'totales' => [
                         'subtotal' => number_format((float)$factura->subTotal, 2),
                         'iva'      => number_format((float)$factura->totalIVA, 2),
@@ -596,7 +631,8 @@ class FacturaController extends Controller
                     ],
                 ]
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al generar ticket',
@@ -604,6 +640,7 @@ class FacturaController extends Controller
             ], 500);
         }
     }
+
 
 
     /*public function reportePdf($id)
