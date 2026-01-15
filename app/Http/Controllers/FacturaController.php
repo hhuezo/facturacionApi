@@ -7,8 +7,6 @@ use App\Models\catalogo\Producto;
 use App\Models\Empresa;
 use App\Models\EmpresaActividadEconomica;
 use App\Models\EmpresaConfigTransmisionDte;
-use App\Models\EmpresaSucursal;
-use App\Models\EmpresaPuntoVenta;
 use App\Models\Factura;
 use App\Models\FacturaDetalle;
 use App\Models\mh\CondicionVenta;
@@ -184,22 +182,10 @@ class FacturaController extends Controller
             // ============================
             // 4. FACTURA
             // ============================
-            $codigoGeneracion = strtoupper(\Ramsey\Uuid\Uuid::uuid4()->toString());
-
-            $datosControl = $this->crearNumeroControl(
-                $request->idEmpresa,
-                $request->idSucursal,
-                $request->idPuntoVenta,
-                $request->idTipoDte
-            );
-
-            if ($datosControl->mensaje !== 'EXITO') {
-                throw new \Exception($datosControl->excepcion);
-            }
+            $codigoGeneracion = strtoupper(Uuid::uuid4()->toString());
 
             $factura = new Factura();
-            $factura->idNumeroControl = $datosControl->idNumeroControl;
-            $factura->numeroControl   = $datosControl->numeroControl;
+
             $factura->codigoGeneracion = $codigoGeneracion;
 
             $factura->idEmpresa    = $request->idEmpresa;
@@ -384,94 +370,6 @@ class FacturaController extends Controller
 
 
 
-    private function crearNumeroControl(
-        int $idEmpresa,
-        int $idSucursal,
-        int $idPuntoVenta,
-        int $idTipoDte
-    ): object {
-
-        $respuesta = new \stdClass();
-
-        try {
-
-            // ============================
-            // 1. AÑO ACTUAL (MISMO LEGACY)
-            // ============================
-            $anioActual = Carbon::now()->format('Y-01-01');
-
-            // ============================
-            // 2. OBTENER ÚLTIMO CORRELATIVO
-            // ============================
-            $ultimo = DB::table('facturacion_correlativos_numero_control')
-                ->where('idEmpresa', $idEmpresa)
-                ->where('idSucursal', $idSucursal)
-                ->where('idTipoDte', $idTipoDte)
-                ->where('anio', $anioActual)
-                ->orderByDesc('correlativo')
-                ->first();
-
-            if ($ultimo) {
-                $correlativo = ($ultimo->correlativo == 0)
-                    ? 1
-                    : ($ultimo->correlativo + 1);
-            } else {
-                $correlativo = 1;
-            }
-
-            // ============================
-            // 3. CÓDIGOS (TUS MÉTODOS)
-            // ============================
-            $codigoDocTributario = TipoDocumentoTributario::where('id', $idTipoDte)->first()->codigo;
-            $codigoSucursal      = EmpresaSucursal::where('id', $idSucursal)->first()->codigoEstablecimiento;
-            $codigoPuntoVenta    = EmpresaPuntoVenta::where('id', $idPuntoVenta)->first()->codigoPuntoVentaMh;
-
-            // ============================
-            // 4. ARMAR NÚMERO CONTROL
-            // ============================
-            $numeroControl = sprintf(
-                'DTE-%s-%s%s-%015d',
-                $codigoDocTributario,
-                $codigoSucursal,
-                $codigoPuntoVenta,
-                $correlativo
-            );
-
-            // ============================
-            // 5. INSERTAR CORRELATIVO
-            // ============================
-            $idInsertado = DB::table('facturacion_correlativos_numero_control')
-                ->insertGetId([
-                    'idEmpresa'     => $idEmpresa,
-                    'idSucursal'    => $idSucursal,
-                    'idPuntoVenta'  => $idPuntoVenta,
-                    'idTipoDte'     => $idTipoDte,
-                    'correlativo'   => $correlativo,
-                    'numeroControl' => $numeroControl,
-                    'anio'          => $anioActual,
-                ]);
-
-            // ============================
-            // 6. RESPUESTA
-            // ============================
-            $respuesta->mensaje         = 'EXITO';
-            $respuesta->numeroControl   = $numeroControl;
-            $respuesta->idNumeroControl = $idInsertado;
-        } catch (\Throwable $e) {
-
-            \Log::error('Error crearNumeroControl()', [
-                'idEmpresa'  => $idEmpresa,
-                'idSucursal' => $idSucursal,
-                'idTipoDte'  => $idTipoDte,
-                'exception'  => $e,
-            ]);
-
-            $respuesta->mensaje   = 'ERROR';
-            $respuesta->excepcion = $e->getMessage();
-        }
-
-        return $respuesta;
-    }
 
 
 
