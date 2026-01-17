@@ -505,7 +505,7 @@ class FacturaController extends Controller
                         if ((float)$item->excentas > 0) {
                             $totalItem = (float)$item->excentas;
                         } else {
-                            $totalItem = (float)$item->gravadas;
+                            $totalItem = (float)$item->gravadas  + (float)$item->iva;
                         }
                         /* $totalItem  =
                             (float)$item->gravadas +
