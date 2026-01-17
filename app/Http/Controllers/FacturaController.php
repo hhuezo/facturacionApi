@@ -513,7 +513,7 @@ class FacturaController extends Controller
                             (float)$item->iva;*/
 
                         return [
-                            'cantidad'    => number_format((float)$item->cantidad, 2),
+                            'cantidad'    => number_format((float)$item->cantidad, 0),
                             'precioUnitario'    => number_format((float)$item->precioUnitario, 2),
                             'descripcion' => $item->producto->nombre ?? 'Producto/Servicio',
                             'total'       => number_format($totalItem, 2),
