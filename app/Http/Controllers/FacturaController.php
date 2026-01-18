@@ -18,6 +18,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Ramsey\Uuid\Uuid;
+use chillerlan\QRCode\QRCode;
+use chillerlan\QRCode\QROptions;
+
+
 
 class FacturaController extends Controller
 {
@@ -453,6 +457,7 @@ class FacturaController extends Controller
         return $pdf->stream('DTE_' . $factura->numeroControl . '.pdf');
     }
 
+
     public function ticketJson($id)
     {
         try {
@@ -471,6 +476,177 @@ class FacturaController extends Controller
                     'message' => 'Factura no encontrada'
                 ], 404);
             }
+
+            // ============================
+            // QR
+            // ============================
+            $fechaEmision = Carbon::parse($factura->fechaHoraEmision)->format('Y-m-d');
+
+            $urlQr = "https://admin.factura.gob.sv/consultaPublica"
+                . "?ambiente=00"
+                . "&codGen={$factura->codigoGeneracion}"
+                . "&fechaEmi={$fechaEmision}";
+
+            $options = new QROptions([
+                'outputType' => QRCode::OUTPUT_IMAGE_PNG,
+                'scale' => 6,
+            ]);
+
+            $qrBinary = (new QRCode($options))->render($urlQr);
+            $qrBase64 = base64_encode($qrBinary);
+
+            // ============================
+            // ITEMS
+            // ============================
+            $items = $factura->detalles->map(function ($item) {
+
+                $totalItem = (float)$item->gravadas + (float)$item->excentas;
+
+                return [
+                    'cantidad'    => number_format($item->cantidad, 0),
+                    'descripcion' => $item->producto->nombre ?? 'Producto',
+                    'precio'      => number_format($item->precioUnitario, 2),
+                    'total'       => number_format($totalItem, 2),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+
+                    // ============================
+                    // EMPRESA
+                    // ============================
+                    'empresa' => [
+                        'nombre'    => $factura->empresa->nombre ?? '',
+                        'direccion' => $factura->empresa->direccion ?? '',
+                        'nit'       => $factura->empresa->nit ?? '',
+                        'nrc'       => $factura->empresa->nrc ?? '',
+                        'giro'      => $factura->empresa->giro ?? '',
+                    ],
+
+                    // ============================
+                    // DOCUMENTO
+                    // ============================
+                    'documento' => [
+                        'tipo'             => strtoupper($factura->tipoDocumentoTributario->nombre ?? ''),
+                        'numeroControl'    => $factura->numeroControl,
+                        'codigoGeneracion' => $factura->codigoGeneracion,
+                        'selloHacienda' => $factura->selloHacienda,
+                        'fecha'            => Carbon::parse($factura->fechaHoraEmision)->format('d/m/Y H:i'),
+                        'caja'             => $factura->sucursal->nombreSucursal ?? 'Caja principal',
+                    ],
+
+                    // ============================
+                    // CLIENTE
+                    // ============================
+                    'cliente' => [
+                        'nombre'    => $factura->cliente->nombreCliente ?? 'CONSUMIDOR FINAL',
+                        'documento' => $factura->cliente->numeroDocumento ?? '',
+                        'nrc'       => $factura->cliente->nrc ?? '',
+                        'direccion' => $factura->cliente->direccion ?? '',
+                        'giro'      => $factura->cliente->giro ?? '',
+                    ],
+
+                    // ============================
+                    // ITEMS
+                    // ============================
+                    'items' => $items,
+
+                    // ============================
+                    // TOTALES
+                    // ============================
+                    'totales' => [
+                        'subtotal'  => number_format($factura->subTotal, 2),
+                        'iva'       => number_format($factura->totalIVA, 2),
+                        'total'     => number_format($factura->totalPagar, 2),
+                        'efectivo'  => number_format($factura->totalPagar, 2),
+                        'cambio'    => number_format(0, 2),
+                    ],
+
+                    // ============================
+                    // MEDIOS DE PAGO
+                    // ============================
+                    'pagos' => [
+                        [
+                            'tipo'  => 'EFECTIVO',
+                            'monto' => number_format($factura->totalPagar, 2),
+                        ]
+                    ],
+
+                    // ============================
+                    // INFORMACIÓN ADICIONAL
+                    // ============================
+                    'info' => [
+                        'idTransaccion' => $factura->id,
+                        'mensaje'       => 'MUCHAS GRACIAS! LE ESPERAMOS PRONTO!!',
+                        'original'      => 'ORIGINAL CLIENTE',
+                        'copia'         => 'COPIA OBLIGADO TRIBUTARIO',
+                    ],
+
+                    // ============================
+                    // QR
+                    // ============================
+                    'qr' => [
+                        'url'   => $urlQr,
+                        'image' => 'data:image/png;base64,' . $qrBase64,
+                    ],
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar ticket',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    /*
+    public function ticketJson($id)
+    {
+        try {
+
+            $factura = Factura::with([
+                'cliente',
+                'empresa',
+                'sucursal',
+                'tipoDocumentoTributario',
+                'detalles.producto'
+            ])->find($id);
+
+            if (!$factura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Factura no encontrada'
+                ], 404);
+            }
+
+            // ============================
+            // QR EN MEMORIA (NO ARCHIVOS)
+            // ============================
+            $fechaEmision = Carbon::parse($factura->fechaHoraEmision)->format('Y-m-d');
+
+            //{$factura->idAmbiente} sustituir en produccion
+            $urlQr = "https://admin.factura.gob.sv/consultaPublica"
+                . "?ambiente=00"
+                . "&codGen={$factura->codigoGeneracion}"
+                . "&fechaEmi={$fechaEmision}";
+
+
+            $options = new QROptions([
+                'outputType' => QRCode::OUTPUT_IMAGE_PNG,
+                'scale'      => 6,          // Tamaño del QR (6 está perfecto para ticket)
+            ]);
+
+            $qrBinary = (new QRCode($options))->render($urlQr);
+            $qrBase64 = base64_encode($qrBinary);
+
+
+
+
+
 
             return response()->json([
                 'success' => true,
@@ -506,37 +682,41 @@ class FacturaController extends Controller
                     ],
 
                     // ============================
-                    // ITEMS
+                    // ITEMS (TU LÓGICA ORIGINAL)
                     // ============================
                     'items' => $factura->detalles->map(function ($item) {
 
                         $totalItem = 0;
                         if ((float)$item->excentas > 0) {
-                            $totalItem = (float)$item->excentas;
+                            $totalItem = (float)$item->excentas - (float)$item->iva;
                         } else {
-                            $totalItem = (float)$item->gravadas  + (float)$item->iva;
+                            $totalItem = (float)$item->gravadas;
                         }
-                        /* $totalItem  =
-                            (float)$item->gravadas +
-                            (float)$item->excentas +
-                            (float)$item->iva;*/
 
                         return [
-                            'cantidad'    => number_format((float)$item->cantidad, 0),
-                            'precioUnitario'    => number_format((float)$item->precioUnitario, 2),
-                            'descripcion' => $item->producto->nombre ?? 'Producto/Servicio',
-                            'total'       => number_format($totalItem, 2),
+                            'cantidad'       => number_format((float)$item->cantidad, 0),
+                            'precioUnitario' => number_format((float)$item->precioUnitario, 2),
+                            'descripcion'    => $item->producto->nombre ?? 'Producto/Servicio',
+                            'total'          => number_format($totalItem, 2),
                         ];
                     }),
 
                     // ============================
-                    // TOTALES
+                    // TOTALES (SIN CAMBIOS)
                     // ============================
                     'totales' => [
-                        'subtotal' => number_format((float)$factura->subTotal, 2),
+                        'subtotal' => number_format((float)$factura->totalPagar - (float)$factura->totalIVA, 2),
                         'iva'      => number_format((float)$factura->totalIVA, 2),
                         'total'    => number_format((float)$factura->totalPagar, 2),
                     ],
+
+                    // ============================
+                    // QR
+                    // ============================
+                    'qr' => [
+                        'url'   => $urlQr,
+                        'image' => 'data:image/png;base64,' . $qrBase64
+                    ]
                 ]
             ]);
         } catch (\Throwable $e) {
@@ -547,7 +727,7 @@ class FacturaController extends Controller
                 'error'   => $e->getMessage()
             ], 500);
         }
-    }
+    }*/
 
 
 
