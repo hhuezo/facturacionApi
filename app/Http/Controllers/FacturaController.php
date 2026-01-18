@@ -142,6 +142,7 @@ class FacturaController extends Controller
 
     public function store(Request $request)
     {
+
         DB::beginTransaction();
 
         try {
@@ -231,22 +232,30 @@ class FacturaController extends Controller
                 $producto = Producto::findOrFail($item['idProducto']);
 
                 $cantidad = round((float) $item['cantidad'], 2);
-                $precioUnitario = round((float) $item['precioUnitario'], 6); // YA SIN IVA
 
-                $baseItem = round($cantidad * $precioUnitario, 6);
+                // ✅ Precio unitario CON IVA (viene así desde el front)
+                $precioUnitarioConIva = round((float) $item['precioUnitario'], 6);
+
+                // ✅ Total de línea CON IVA
+                $totalLineaConIva = round($cantidad * $precioUnitarioConIva, 6);
 
                 $productoEsExento = $producto->excento === 'S';
                 $esExento = $clienteEsExento || $productoEsExento;
 
-                // BASE SIEMPRE
-                $gravada = $baseItem;
-
                 if ($esExento) {
-                    $excenta = $baseItem;
-                    $ivaItem = 0;
+
+                    $gravada = 0.0;
+                    $excenta = $totalLineaConIva;
+                    $ivaItem = 0.0;
                 } else {
-                    $excenta = 0;
-                    $ivaItem = round($baseItem * 0.13, 6);
+
+                    // 🔥 AQUÍ SALE 0.2934 CUANDO totalLineaConIva = 2.55
+                    $baseSinIva = round($totalLineaConIva / 1.13, 6);
+                    $ivaItem    = round($totalLineaConIva - $baseSinIva, 6);
+
+                    // ✅ TU REGLA: gravadas = TOTAL CON IVA
+                    $gravada = $totalLineaConIva;
+                    $excenta = 0.0;
                 }
 
                 $detalle = new FacturaDetalle();
@@ -255,29 +264,27 @@ class FacturaController extends Controller
                 $detalle->idTipoItem     = $producto->idTipoItem;
                 $detalle->idUnidadMedida = $item['idUnidadMedida'];
 
+                // ✅ Guardas PRECIO UNITARIO CON IVA
                 $detalle->cantidad       = $cantidad;
-                $detalle->precioUnitario = $precioUnitario;
+                $detalle->precioUnitario = $precioUnitarioConIva;
 
                 $detalle->porcentajeDescuento = 0;
                 $detalle->descuento            = 0;
 
-                $detalle->gravadas = $gravada;
+                // ✅ Valores finales
+                $detalle->gravadas = $gravada;   // TOTAL con IVA
                 $detalle->excentas = $excenta;
                 $detalle->iva      = $ivaItem;
 
-                $detalle->motivoCambioPrecio = $item['motivoCambioPrecio'] ?? null;
                 $detalle->save();
 
-                if ($excenta > 0) {
-                    $totalExcenta += $excenta;
-                } else {
-                    $totalGravada += $gravada;
-                }
-
+                $totalGravada += $gravada;
+                $totalExcenta += $excenta;
                 $totalIva     += $ivaItem;
-
-                $tmpRentaServicios += (float) ($item['rentaPorServicios'] ?? 0);
             }
+
+
+
 
             // ============================
             // 6. RETENCIONES
@@ -337,7 +344,9 @@ class FacturaController extends Controller
             $factura->seguros = $totalSeguros;
             $factura->fletes  = $totalFletes;
 
-            $factura->totalPagar = $totalPagar;
+            $factura->totalPagar = $subTotal;
+            $factura->totalCobrado = $subTotal;
+            $factura->totalVuelto = 0;
 
             $factura->save();
 
@@ -622,7 +631,7 @@ class FacturaController extends Controller
         ])
             ->where('idEmpresa', $idEmpresa)
             ->where('eliminado', 'N')
-            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento','excento')
+            ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento', 'excento')
             ->get();
 
         return response()->json([
