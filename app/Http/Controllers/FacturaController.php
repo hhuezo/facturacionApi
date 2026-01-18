@@ -505,7 +505,7 @@ class FacturaController extends Controller
                 return [
                     'cantidad'    => number_format($item->cantidad, 0),
                     'descripcion' => $item->producto->nombre ?? 'Producto',
-                    'precio'      => number_format($item->precioUnitario, 2),
+                    'precioUnitario'      => number_format($item->precioUnitario, 2),
                     'total'       => number_format($totalItem, 2),
                 ];
             });
