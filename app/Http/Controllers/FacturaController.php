@@ -557,7 +557,7 @@ class FacturaController extends Controller
                     // TOTALES
                     // ============================
                     'totales' => [
-                        'subtotal'  => number_format($factura->subTotal, 2),
+                        'subtotal'  => number_format((float)$factura->totalPagar - (float)$factura->totalIVA , 2),
                         'iva'       => number_format($factura->totalIVA, 2),
                         'total'     => number_format($factura->totalPagar, 2),
                         'efectivo'  => number_format($factura->totalPagar, 2),
