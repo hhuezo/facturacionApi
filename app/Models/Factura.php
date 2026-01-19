@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\catalogo\Cliente;
 use App\Models\mh\Ambiente;
 use App\Models\mh\TipoDocumentoTributario;
+use App\Models\mh\TipoPago;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -134,7 +135,7 @@ class Factura extends Model
         return $this->belongsTo(EmpresaSucursal::class, 'idSucursal');
     }
 
-      public function puntoVenta()
+    public function puntoVenta()
     {
         return $this->belongsTo(EmpresaPuntoVenta::class, 'idPuntoVenta');
     }
@@ -149,7 +150,7 @@ class Factura extends Model
         return $this->belongsTo(Usuario::class, 'idUsuarioRegistraOrden');
     }
 
-     public function ambiente()
+    public function ambiente()
     {
         return $this->belongsTo(Ambiente::class, 'idAmbiente');
     }
@@ -157,5 +158,10 @@ class Factura extends Model
     public function detalles()
     {
         return $this->hasMany(FacturaDetalle::class, 'idEncabezado');
+    }
+
+    public function tipoPago()
+    {
+        return $this->belongsTo(TipoPago::class, 'idTipoPago');
     }
 }

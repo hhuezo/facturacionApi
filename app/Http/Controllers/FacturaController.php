@@ -11,6 +11,7 @@ use App\Models\Factura;
 use App\Models\FacturaDetalle;
 use App\Models\mh\CondicionVenta;
 use App\Models\mh\TipoDocumentoTributario;
+use App\Models\mh\TipoPago;
 use App\Models\mh\TipoPlazo;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -93,12 +94,14 @@ class FacturaController extends Controller
         $idEmpresa = $request->idEmpresa ?? 0;
 
         $empresas = Empresa::where('id', $idEmpresa)->select('id', 'nombreComercial')->get();
-        $tiposDocumento = Empresa::with([
-            'tiposDocumentoTributario:id,nombre'
-        ])
+        $tiposDocumento = Empresa::with('tiposDocumentoTributario:id,nombre')
             ->where('id', $idEmpresa)
             ->first()
-            ?->tiposDocumentoTributario ?? collect();
+            ?->tiposDocumentoTributario
+            ->whereIn('id', [1, 2])
+            ->values()
+            ?? collect();
+
 
 
         $clientes = Cliente::with([
@@ -126,6 +129,8 @@ class FacturaController extends Controller
             ->select('id', 'nombre', 'idUnidadMedida', 'precioVentaConIva', 'valorDescuento', 'excento')
             ->get();
 
+        $tiposPago = TipoPago::where('visible', 'S')->get();
+
 
         return response()->json([
             'success' => true,
@@ -136,6 +141,7 @@ class FacturaController extends Controller
                 'tiposPlazo' => $tiposPlazo,
                 'condicionesVenta' => $condicionesVenta,
                 'productos' => $productos,
+                'tiposPago' => $tiposPago,
             ],
         ], 200);
         //
@@ -207,6 +213,7 @@ class FacturaController extends Controller
 
             $factura->idCondicionVenta = $request->idCondicionVenta;
             $factura->idPlazo          = $request->idPlazo ?? null;
+            $factura->idTipoPago          = $request->idTipoPago ?? null;
             $factura->diasCredito      = $request->diasCredito ?? null;
 
             $factura->estadoHacienda   = 'COTIZACION';
@@ -230,6 +237,9 @@ class FacturaController extends Controller
             $totalIva     = 0;
 
             $tmpRentaServicios = 0;
+
+
+            $idTipoDte = (int) $request->idTipoDte;
 
             foreach ($request->items as $item) {
 
@@ -272,6 +282,8 @@ class FacturaController extends Controller
                 $detalle->cantidad       = $cantidad;
                 $detalle->precioUnitario = $precioUnitarioConIva;
 
+
+
                 $detalle->porcentajeDescuento = 0;
                 $detalle->descuento            = 0;
 
@@ -279,6 +291,13 @@ class FacturaController extends Controller
                 $detalle->gravadas = $gravada;   // TOTAL con IVA
                 $detalle->excentas = $excenta;
                 $detalle->iva      = $ivaItem;
+
+
+                if ($idTipoDte === 2) {
+                    $detalle->precioUnitario = $baseSinIva;
+                    $detalle->gravadas = $baseSinIva;
+                    $detalle->iva      = 0.00;
+                }
 
                 $detalle->save();
 
@@ -293,7 +312,7 @@ class FacturaController extends Controller
             // ============================
             // 6. RETENCIONES
             // ============================
-            $idTipoDte = (int) $request->idTipoDte;
+
 
             $retencionIVA1 = 0;
             $totalRetencionRenta = 0;
@@ -337,8 +356,24 @@ class FacturaController extends Controller
             // ============================
             // 8. GUARDAR TOTALES
             // ============================
-            $factura->subTotal     = $subTotal;
+
+
             $factura->totalGravada = $totalGravada;
+            $factura->totalPagar = $subTotal;
+
+            $factura->totalCobrado = $subTotal;
+
+            if ((int)$request->idTipoDte === 2) {
+                $subTotal = $subTotal - $totalIva;
+                $factura->totalGravada = $subTotal;
+                $factura->totalPagar = $totalGravada;
+                $factura->totalCobrado = $totalGravada;
+            }
+
+
+
+            $factura->subTotal     = $subTotal;
+
             $factura->totalExenta  = $totalExcenta;
             $factura->totalIVA     = $totalIva;
 
@@ -348,9 +383,10 @@ class FacturaController extends Controller
             $factura->seguros = $totalSeguros;
             $factura->fletes  = $totalFletes;
 
-            $factura->totalPagar = $subTotal;
-            $factura->totalCobrado = $subTotal;
+
+
             $factura->totalVuelto = 0;
+
 
             $factura->save();
 
@@ -557,7 +593,7 @@ class FacturaController extends Controller
                     // TOTALES
                     // ============================
                     'totales' => [
-                        'subtotal'  => number_format((float)$factura->totalPagar - (float)$factura->totalIVA , 2),
+                        'subtotal'  => number_format((float)$factura->totalPagar - (float)$factura->totalIVA, 2),
                         'iva'       => number_format($factura->totalIVA, 2),
                         'total'     => number_format($factura->totalPagar, 2),
                         'efectivo'  => number_format($factura->totalPagar, 2),
