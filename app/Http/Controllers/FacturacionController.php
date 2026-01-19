@@ -200,7 +200,7 @@ class FacturacionController extends Controller
 
 
 
-
+    /*
     private function buildJsonConsumidorFinal(Factura $factura)
     {
         $fecha = Carbon::parse($factura->fechaHoraEmision);
@@ -431,7 +431,7 @@ class FacturacionController extends Controller
             'fechaHoraEmision' => $factura->fechaHoraEmision,
             'json'             => $dteJson,
         ]);
-    }
+    }*/
 
 
 
@@ -444,367 +444,183 @@ class FacturacionController extends Controller
 
 
 
-    private function buildJsonCreditoFiscal(Factura $factura)
-    {
-        // ============================
-        // 1. VALORES DESDE BD (NO RECALCULAR)
-        // ============================
-        $subTotalGravada = round($factura->subTotal, 2);
-        $subTotalExenta  = 0;
-        $iva             = round($factura->totalIVA, 2);
-        $totalPagar      = round($factura->totalPagar, 2);
+private function buildJsonCreditoFiscal(Factura $factura)
+{
+    // ============================
+    // 1. VALORES DIRECTOS DESDE BD
+    // ============================
+    $totalGravada = round($factura->subTotal, 2);     // base gravada REAL
+    $totalIVA     = round($factura->totalIVA, 2);     // IVA REAL
+    $totalPagar   = round($factura->totalPagar, 2);   // TOTAL REAL
 
-        // ============================
-        // 2. TOTAL EN LETRAS
-        // ============================
-        $totalLetras = $this->totalEnLetras($totalPagar);
+    // ============================
+    // 2. TOTAL EN LETRAS
+    // ============================
+    $totalLetras = $this->totalEnLetras($totalPagar);
 
-        // ============================
-        // 3. TRIBUTOS (IVA)
-        // ============================
-        $tributosResumen = [[
-            'codigo'      => '20',
-            'descripcion' => 'Impuesto al Valor Agregado 13%',
-            'valor'       => $iva
-        ]];
+    // ============================
+    // 3. FECHA
+    // ============================
+    $fecha = Carbon::parse($factura->fechaHoraEmision);
 
-        // ============================
-        // 4. FECHA
-        // ============================
-        $fecha = Carbon::parse($factura->fechaHoraEmision);
+    // ============================
+    // 4. ACTIVIDAD ECONÓMICA
+    // ============================
+    $actividadEmpresa = EmpresaActividadEconomica::where('idEmpresa', $factura->idEmpresa)
+        ->where('actividadPrincipal', 'S')
+        ->first();
 
-        // ============================
-        // 5. ACTIVIDAD ECONÓMICA EMISOR
-        // ============================
-        $actividadEmpresa = EmpresaActividadEconomica::where('idEmpresa', $factura->idEmpresa)
-            ->where('actividadPrincipal', 'S')
-            ->first();
+    // ============================
+    // 5. JSON BASE
+    // ============================
+    $dteJson = [
 
-        // ============================
-        // 6. JSON DTE
-        // ============================
-        $dteJson = [
-
-            'identificacion' => [
-                'version'          => (int) $factura->versionJson,
-                'ambiente'         => $factura->ambiente->codigo,
-                'tipoDte'          => '03',
-                'numeroControl'    => $factura->numeroControl,
-                'codigoGeneracion' => $factura->codigoGeneracion,
-                'tipoModelo'       => (int) $factura->idTipoFacturacion,
-                'tipoOperacion'    => (int) $factura->idTipoTransmision,
-                'tipoContingencia' => null,
-                'motivoContin'     => null,
-                'fecEmi'           => $fecha->format('Y-m-d'),
-                'horEmi'           => $fecha->format('H:i:s'),
-                'tipoMoneda'       => 'USD'
-            ],
-
-            'emisor' => [
-                'nit'                 => str_replace('-', '', $factura->empresa->nit),
-                'nrc'                 => str_replace('-', '', $factura->empresa->numeroIVA),
-                'nombre'              => $factura->empresa->nombre,
-                'nombreComercial'     => $factura->empresa->nombreComercial,
-                'codActividad'        => trim($actividadEmpresa->actividadEconomica->codigoActividad ?? ''),
-                'descActividad'       => trim($actividadEmpresa->actividadEconomica->nombreActividad ?? ''),
-                'tipoEstablecimiento' => $factura->sucursal->tipoEstablecimiento->codigo,
-                'direccion' => [
-                    'departamento' => $factura->sucursal->departamento->codigo,
-                    'municipio'    => $factura->sucursal->municipio->codigo,
-                    'complemento'  => $factura->sucursal->direccion
-                ],
-                'telefono'        => $factura->sucursal->telefono,
-                'correo'          => $factura->sucursal->correo,
-                'codEstableMH'    => $factura->sucursal->codigoEstablecimiento,
-                'codEstable'      => null,
-                'codPuntoVentaMH' => $factura->puntoVenta->codigoPuntoVentaMh,
-                'codPuntoVenta'   => null
-            ],
-
-            'receptor' => [
-                'nit' => $factura->cliente->numeroDocumento
-                    ? str_replace('-', '', $factura->cliente->numeroDocumento)
-                    : null,
-                'nrc' => $factura->cliente->nrc
-                    ? str_replace('-', '', $factura->cliente->nrc)
-                    : null,
-                'nombre' => $factura->cliente->nombreCliente,
-                'nombreComercial' => $factura->cliente->nombreCliente,
-                'codActividad' => trim($factura->cliente->actividadEconomica->codigoActividad ?? ''),
-                'descActividad' => trim($factura->cliente->actividadEconomica->nombreActividad ?? ''),
-                'direccion' => [
-                    'departamento' => $factura->cliente->departamento->codigo ?? null,
-                    'municipio'    => $factura->cliente->municipio->codigo ?? null,
-                    'complemento'  => $factura->cliente->direccion
-                ],
-                'telefono' => $factura->cliente->telefono,
-                'correo'   => $factura->cliente->correo
-            ],
-
-            'documentoRelacionado' => null,
-            'otrosDocumentos'      => null,
-            'ventaTercero'         => null,
-            'extension'            => null,
-            'apendice'             => null,
-
-            'cuerpoDocumento' => [],
-
-            'resumen' => [
-                'totalNoSuj'          => 0,
-                'totalExenta'         => 0,
-                'totalGravada'        => $subTotalGravada,
-                'subTotalVentas'      => $subTotalGravada,
-                'descuNoSuj'          => 0,
-                'descuExenta'         => 0,
-                'descuGravada'        => 0,
-                'saldoFavor'          => 0,
-                'porcentajeDescuento' => 0,
-                'totalDescu'          => 0,
-                'tributos'            => $tributosResumen,
-                'subTotal'            => $subTotalGravada,
-                'ivaPerci1'           => 0,
-                'ivaRete1'            => 0,
-                'reteRenta'           => 0,
-                'montoTotalOperacion' => $totalPagar,
-                'totalNoGravado'      => 0,
-                'totalPagar'          => $totalPagar,
-                'totalLetras'         => $totalLetras,
-                'condicionOperacion'  => (int) $factura->idCondicionVenta,
-                'pagos' => [[
-                    'codigo'     => $factura->tipoPago->codigo,
-                    'montoPago'  => $totalPagar,
-                    'referencia' => null,
-                    'plazo'      => null,
-                    'periodo'    => null
-                ]],
-                'numPagoElectronico' => null
-            ]
-        ];
-
-        // ============================
-        // 7. CUERPO DOCUMENTO
-        // ============================
-        $contador = 1;
-
-        foreach ($factura->detalles as $detalle) {
-
-            $baseLinea = round($detalle->cantidad * $detalle->precioUnitario, 4);
-
-            $dteJson['cuerpoDocumento'][] = [
-                'numItem'         => $contador++,
-                'tipoItem'        => (int) $detalle->idTipoItem,
-                'numeroDocumento' => null,
-                'cantidad'        => round($detalle->cantidad, 4),
-                'codigo'          => $detalle->producto->codigo,
-                'codTributo'      => null,
-                'uniMedida'       => (int) $detalle->unidadMedida->codigo,
-                'descripcion'     => $detalle->producto->nombre,
-                'precioUni'       => round($detalle->precioUnitario, 4), // SIN IVA
-                'montoDescu'      => round($detalle->descuento, 4),
-                'ventaNoSuj'      => 0,
-                'ventaExenta'     => 0,
-                'ventaGravada'    => $totalPagar,
-                'tributos'        => ['20'],
-                'psv'             => 0,
-                'noGravado'       => 0
-            ];
-        }
-
-        return response()->json([
-            'mensaje'          => 'EXITO',
+        'identificacion' => [
+            'version'          => (int) $factura->versionJson,
+            'ambiente'         => $factura->ambiente->codigo,
+            'tipoDte'          => '03',
             'numeroControl'    => $factura->numeroControl,
-            'fechaHoraEmision' => $factura->fechaHoraEmision,
-            'json'             => $dteJson
-        ]);
+            'codigoGeneracion' => $factura->codigoGeneracion,
+            'tipoModelo'       => (int) $factura->idTipoFacturacion,
+            'tipoOperacion'    => (int) $factura->idTipoTransmision,
+            'tipoContingencia' => null,
+            'motivoContin'     => null,
+            'fecEmi'           => $fecha->format('Y-m-d'),
+            'horEmi'           => $fecha->format('H:i:s'),
+            'tipoMoneda'       => 'USD'
+        ],
+
+        'emisor' => [
+            'nit'                 => str_replace('-', '', $factura->empresa->nit),
+            'nrc'                 => str_replace('-', '', $factura->empresa->numeroIVA),
+            'nombre'              => $factura->empresa->nombre,
+            'nombreComercial'     => $factura->empresa->nombreComercial,
+            'codActividad'        => trim($actividadEmpresa->actividadEconomica->codigoActividad ?? ''),
+            'descActividad'       => trim($actividadEmpresa->actividadEconomica->nombreActividad ?? ''),
+            'tipoEstablecimiento' => $factura->sucursal->tipoEstablecimiento->codigo,
+            'direccion' => [
+                'departamento' => $factura->sucursal->departamento->codigo,
+                'municipio'    => $factura->sucursal->municipio->codigo,
+                'complemento'  => $factura->sucursal->direccion
+            ],
+            'telefono'        => $factura->sucursal->telefono,
+            'correo'          => $factura->sucursal->correo,
+            'codEstableMH'    => $factura->sucursal->codigoEstablecimiento,
+            'codEstable'      => null,
+            'codPuntoVentaMH' => $factura->puntoVenta->codigoPuntoVentaMh,
+            'codPuntoVenta'   => null
+        ],
+
+        'receptor' => [
+            'nit' => $factura->cliente->numeroDocumento
+                ? str_replace('-', '', $factura->cliente->numeroDocumento)
+                : null,
+            'nrc' => $factura->cliente->nrc
+                ? str_replace('-', '', $factura->cliente->nrc)
+                : null,
+            'nombre' => $factura->cliente->nombreCliente,
+            'nombreComercial' => $factura->cliente->nombreCliente,
+            'codActividad' => trim($factura->cliente->actividadEconomica->codigoActividad ?? ''),
+            'descActividad' => trim($factura->cliente->actividadEconomica->nombreActividad ?? ''),
+            'direccion' => [
+                'departamento' => $factura->cliente->departamento->codigo ?? null,
+                'municipio'    => $factura->cliente->municipio->codigo ?? null,
+                'complemento'  => $factura->cliente->direccion
+            ],
+            'telefono' => $factura->cliente->telefono,
+            'correo'   => $factura->cliente->correo
+        ],
+
+        'documentoRelacionado' => null,
+        'otrosDocumentos'      => null,
+        'ventaTercero'         => null,
+        'extension'            => null,
+        'apendice'             => null,
+
+        'cuerpoDocumento' => [],
+
+        'resumen' => [
+            'totalNoSuj'          => 0,
+            'totalExenta'         => 0,
+            'totalGravada'        => $totalGravada,
+            'subTotalVentas'      => $totalGravada,
+            'descuNoSuj'          => 0,
+            'descuExenta'         => 0,
+            'descuGravada'        => 0,
+            'saldoFavor'          => 0,
+            'porcentajeDescuento' => 0,
+            'totalDescu'          => 0,
+            'tributos' => [[
+                'codigo'      => '20',
+                'descripcion' => 'Impuesto al Valor Agregado 13%',
+                'valor'       => $totalIVA
+            ]],
+            'subTotal'            => $totalGravada,
+            'ivaPerci1'           => 0,
+            'ivaRete1'            => 0,
+            'reteRenta'           => 0,
+            'montoTotalOperacion' => $totalPagar,
+            'totalNoGravado'      => 0,
+            'totalPagar'          => $totalPagar,
+            'totalLetras'         => $totalLetras,
+            'condicionOperacion'  => (int) $factura->idCondicionVenta,
+            'pagos' => [[
+                'codigo'    => $factura->tipoPago->codigo,
+                'montoPago' => $totalPagar,
+                'referencia'=> null,
+                'plazo'     => null,
+                'periodo'   => null
+            ]],
+            'numPagoElectronico' => null
+        ]
+    ];
+
+    // ============================
+    // 6. CUERPO DOCUMENTO (CLAVE)
+    // ============================
+    $contador = 1;
+
+    foreach ($factura->detalles as $detalle) {
+
+        $cantidad = (float) $detalle->cantidad;
+        $gravada  = round((float) $detalle->gravadas, 4);
+
+        $precioUnitario = $cantidad > 0
+            ? round($gravada / $cantidad, 4)
+            : 0;
+
+        $dteJson['cuerpoDocumento'][] = [
+            'numItem'         => $contador++,
+            'tipoItem'        => (int) $detalle->idTipoItem,
+            'numeroDocumento' => null,
+            'cantidad'        => round($cantidad, 4),
+            'codigo'          => $detalle->producto->codigo,
+            'codTributo'      => null,
+            'uniMedida'       => (int) $detalle->unidadMedida->codigo,
+            'descripcion'     => $detalle->producto->nombre,
+            'precioUni'       => $precioUnitario,
+            'montoDescu'      => round((float) $detalle->descuento, 4),
+            'ventaNoSuj'      => 0,
+            'ventaExenta'     => 0,
+            'ventaGravada'    => $gravada,
+            'tributos'        => ['20'],
+            'psv'             => 0,
+            'noGravado'       => 0
+        ];
     }
 
+    return response()->json([
+        'mensaje'          => 'EXITO',
+        'numeroControl'    => $factura->numeroControl,
+        'fechaHoraEmision' => $factura->fechaHoraEmision,
+        'json'             => $dteJson
+    ]);
+}
 
 
 
-    /*private function buildJsonCreditoFiscal(Factura $factura)
-    {
-        // 1. Cálculos generales
-        $iva = 0;
-        $subTotalGravada = 0;
-        $subTotalExenta = 0;
-        $descuentoTotal = 0;
-        $esSoloExcento = true;
-
-        foreach ($factura->detalles as $detalle) {
-            $descuentoTotal += $detalle->descuento;
-
-            if ($detalle->excentas == 0) {
-                $subTotalGravada += $detalle->gravadas;
-                $iva += $detalle->iva;
-                $esSoloExcento = false;
-            } else {
-                $subTotalExenta += $detalle->excentas;
-            }
-        }
-
-        $subTotalProductos = $subTotalGravada + $subTotalExenta;
-        $montoTotalOperacion = $subTotalProductos + $factura->totalIVA;
-
-        // 2. Total en letras
-        $totalLetras = $this->totalEnLetras((float) $factura->totalPagar);
-
-        // 3. Tributos
-        $tributos = null;
-        if (!$esSoloExcento) {
-            $tributos = [[
-                'codigo' => '20',
-                'descripcion' => 'Impuesto al Valor Agregado 13%',
-                'valor' => round($factura->totalIVA, 2)
-            ]];
-        }
-
-        // 4. Fecha emisión
-        $fecha = Carbon::parse($factura->fechaHoraEmision);
 
 
-        //ACTIVIDAD ECONÓMICA
-        $actividad = EmpresaActividadEconomica::where('idEmpresa', $factura->idEmpresa)
-            ->where('actividadPrincipal', 'S')
-            ->first();
-
-        // 5. JSON DTE
-        $dteJson = [
-            'identificacion' => [
-                'version' => (int) $factura->versionJson,
-                'ambiente'         => $factura->ambiente->codigo,
-                'tipoDte' => '03',
-                'numeroControl' => $factura->numeroControl,
-                'codigoGeneracion' => $factura->codigoGeneracion,
-                'tipoModelo' => (int) $factura->idTipoFacturacion,
-                'tipoOperacion' => (int) $factura->idTipoTransmision,
-                'tipoContingencia' => $factura->idTipoContingencia,
-                'motivoContin' => $factura->motivoContingencia,
-                'fecEmi' => $fecha->format('Y-m-d'),
-                'horEmi' => $fecha->format('H:i:s'),
-                'tipoMoneda' => 'USD'
-            ],
-
-            'emisor' => [
-                'nit'                 => str_replace('-', '', $factura->empresa->nit),
-                'nrc'                 => str_replace('-', '', $factura->empresa->numeroIVA),
-                'nombre'              => $factura->empresa->nombre,
-                'nombreComercial'     => $factura->empresa->nombreComercial,
-                'codActividad'        => trim($actividad->actividadEconomica->codigoActividad ?? ''),
-                'descActividad'       => trim($actividad->actividadEconomica->nombreActividad ?? ''),
-                'tipoEstablecimiento' => $factura->sucursal->tipoEstablecimiento->codigo ?? '',
-                'direccion' => [
-                    'departamento' => $factura->sucursal->departamento->codigo,
-                    'municipio'    => $factura->sucursal->municipio->codigo,
-                    'complemento'  => $factura->sucursal->direccion,
-                ],
-                'telefono'        => $factura->sucursal->telefono,
-                'correo'          => $factura->sucursal->correo,
-                'codEstableMH'    => $factura->sucursal->codigoEstablecimiento,
-                'codEstable'      => $factura->sucursal->codigoEstablecimiento,
-                'codPuntoVentaMH' => $factura->puntoVenta->codigoPuntoVentaMh ?? null,
-                'codPuntoVenta'   =>  $factura->puntoVenta->codigoPuntoVentaMh,
-
-
-            ],
-
-
-            'receptor' => [
-                'nit' => $factura->cliente->numeroDocumento
-                    ? str_replace('-', '', $factura->cliente->numeroDocumento)
-                    : null,
-                'nrc' => $factura->cliente->nrc
-                    ? str_replace('-', '', $factura->cliente->nrc)
-                    : null,
-                'nombre' => $factura->cliente->nombreCliente,
-                'nombreComercial' => $factura->cliente->nombreCliente,
-                'direccion' => [
-                    'departamento' => $factura->cliente->departamento->codigo ?? null,
-                    'municipio' => $factura->cliente->municipio->codigo ?? null,
-                    'complemento' => $factura->cliente->direccion
-                ],
-                'telefono' => $factura->cliente->telefono,
-                'correo' => $factura->cliente->correo,
-                'codActividad' => trim($factura->cliente->actividadEconomica->codigoActividad) ?? null,
-                'descActividad' => trim($factura->cliente->actividadEconomica->nombreActividad) ?? null,
-            ],
-            "documentoRelacionado" => null,
-            "otrosDocumentos" => null,
-            "ventaTercero" => null,
-            "extension" => null,
-            "apendice" => null,
-            'cuerpoDocumento' => [],
-
-            'resumen' => [
-                'totalNoSuj' => 0,
-                'totalExenta' => round($subTotalExenta, 2),
-                'totalGravada' => round($subTotalGravada, 2),
-                'subTotalVentas' => round($subTotalProductos, 2),
-                'descuNoSuj' => 0,
-                'descuExenta' => 0,
-                'descuGravada' => 0,
-                'saldoFavor' => 0,
-                'porcentajeDescuento' => 0,
-                'totalDescu' => round($descuentoTotal, 2),
-                'tributos' => $tributos,
-                'subTotal' => round($subTotalProductos, 2),
-                'ivaPerci1' => round($factura->ivaPercibido1, 2),
-                'ivaRete1' => round($factura->ivaRetenido1, 2),
-                'reteRenta' => round($factura->retencionRenta, 2),
-                'montoTotalOperacion' => round($montoTotalOperacion, 2),
-                'totalNoGravado' => 0,
-                'totalPagar' => round($factura->totalPagar, 2),
-                'totalLetras' => $totalLetras,
-                'condicionOperacion'  => (int) $factura->idCondicionVenta,
-                'pagos' => [[
-                    'codigo' => $factura->tipoPago->codigo,
-                    'montoPago' => round($factura->totalPagar, 2),
-                    'referencia' => $factura->numeroAutorizacionTC,
-                    'plazo' => $factura->idPlazo,
-                    'periodo' => $factura->diasCredito
-                ]],
-                'numPagoElectronico' => null,
-
-                "montoTotalOperacion" => round($factura->totalPagar, 2),
-                "totalNoGravado" => 0,
-                "totalPagar" => round($factura->totalPagar, 2),
-            ]
-        ];
-
-        // 6. Cuerpo documento
-        $contador = 1;
-
-        foreach ($factura->detalles as $detalle) {
-            $tributosItem = $detalle->excentas > 0 ? null : ['20'];
-            $codigoTributosItem = $detalle->excentas > 0 ? null : "20";
-
-            $dteJson['cuerpoDocumento'][] = [
-                'numItem' => $contador,
-                "numeroDocumento" => $contador,
-                'tipoItem' => (int) $detalle->idTipoItem,
-                'cantidad' => round($detalle->cantidad, 4),
-                'codigo' => $detalle->producto->codigo,
-                'uniMedida' => (int) $detalle->unidadMedida->codigo,
-                'descripcion' => $detalle->producto->nombre,
-                'precioUni' => round($detalle->precioUnitario, 4),
-                'montoDescu' => round($detalle->descuento, 4),
-                'ventaNoSuj' => 0,
-                'ventaExenta' => round($detalle->excentas, 4),
-                'ventaGravada' => round($detalle->gravadas, 4),
-                'codTributo' => $codigoTributosItem,
-                'tributos' => $tributosItem,
-                'psv' => 0,
-                'noGravado' => 0
-            ];
-            $contador++;
-        }
-
-        return response()->json([
-            'mensaje' => 'EXITO',
-            'numeroControl' => $factura->numeroControl,
-            'fechaHoraEmision' => $factura->fechaHoraEmision,
-            'json' => $dteJson
-        ]);
-    }*/
 
 
     /*
