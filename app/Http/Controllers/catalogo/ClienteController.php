@@ -124,6 +124,7 @@ class ClienteController extends Controller
         $cliente->esExento                 = $request->esExento;
         $cliente->correo                   = $request->correo;
         $cliente->telefono                 = $request->telefono;
+        $cliente->nrc                 = $request->nrc;
 
         $cliente->idPais = $request->idPais ?? null;
         $cliente->idDepartamento                   = $request->idDepartamento ?? null;
@@ -258,6 +259,7 @@ class ClienteController extends Controller
         $cliente->idDepartamento = $request->idDepartamento ?? null;
         $cliente->idMunicipio    = $request->idMunicipio ?? null;
         $cliente->direccion      = $request->direccion ?? null;
+        $cliente->nrc                 = $request->nrc;
 
         // NO se tocan estos campos en update
         // $cliente->clienteFrecuente
