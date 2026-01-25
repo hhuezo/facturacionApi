@@ -3,6 +3,8 @@
 /public/hot
 /public/storage
 /public/recursos
+/public/logos/*
+!/public/logos/.gitkeep
 /storage/*.key
 /vendor
 .env

@@ -5,6 +5,8 @@ use App\Http\Controllers\catalogo\ClienteController;
 use App\Http\Controllers\catalogo\ProductoController;
 use App\Http\Controllers\FacturacionController;
 use App\Http\Controllers\FacturaController;
+use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\ReportePdfController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -53,7 +55,8 @@ Route::put('factura/{id}', [FacturaController::class, 'update']);
 Route::post('factura/emitir/{id}', [FacturaController::class, 'emitir']);
 
 
-Route::get('factura/reporte-pdf/{id}', [FacturaController::class, 'reportePdf']);
+Route::get('factura/reporte-pdf/{id}', [ReportePdfController::class, 'reportePdf']);
+Route::get('factura/reporte-json/{id}', [ReporteController::class, 'reporteJson']);
 Route::get('facturas/{id}/ticket',[FacturaController::class, 'ticketJson']);
 
 Route::post('facturacion/emitir/{facturaId}', [FacturacionController::class, 'generarFacturaElectronica']);

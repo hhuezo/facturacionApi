@@ -450,48 +450,7 @@ class FacturaController extends Controller
         }
     }
 
-    public function reportePdf($id)
-    {
-        $factura = Factura::with([
-            'cliente',
-            'empresa',
-            'sucursal',
-            'usuario',
-            'tipoDocumentoTributario',
-            'detalles.producto',
-            'detalles.unidadMedida'
-        ])->findOrFail($id);
 
-        $nombreActividad = EmpresaActividadEconomica::join(
-            'mh_actividad_economica as ae',
-            'general_datos_empresa_actividades_economicas.idActividad',
-            '=',
-            'ae.id'
-        )
-            ->where('general_datos_empresa_actividades_economicas.idEmpresa', $factura->idEmpresa)
-            ->where('general_datos_empresa_actividades_economicas.actividadPrincipal', 'S')
-            ->value('ae.nombreActividad');
-
-        $sucursal = $factura->sucursal->first();
-
-
-        $pdf = Pdf::loadView('pdf.factura_a4', [
-            'factura' => $factura,
-            'nombreActividad' => $nombreActividad,
-            'sucursal' => $sucursal,
-            // opcional:
-            'logoPath' => null, // public_path('images/logo.png')
-            'qrBase64' => null, // base64 PNG si lo tienes
-            // colores (puedes mapear desde BD)
-            'primario' => '#003366',
-            'fondo'    => '#F2F2F2',
-            'borde'    => '#CCCCCC',
-            'texto'    => '#000000',
-        ])->setPaper('A4', 'portrait');
-        //->setPaper('A4', 'landscape');
-
-        return $pdf->stream('DTE_' . $factura->numeroControl . '.pdf');
-    }
 
 
     public function ticketJson($id)
