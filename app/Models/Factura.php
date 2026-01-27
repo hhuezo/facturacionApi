@@ -6,6 +6,7 @@ use App\Models\catalogo\Cliente;
 use App\Models\mh\Ambiente;
 use App\Models\mh\TipoDocumentoTributario;
 use App\Models\mh\TipoPago;
+use App\Models\mh\TipoPlazo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -163,5 +164,10 @@ class Factura extends Model
     public function tipoPago()
     {
         return $this->belongsTo(TipoPago::class, 'idTipoPago');
+    }
+
+    public function tipoPlazo()
+    {
+        return $this->belongsTo(TipoPlazo::class, 'idPlazo');
     }
 }

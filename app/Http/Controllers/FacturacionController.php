@@ -567,8 +567,8 @@ class FacturacionController extends Controller
                     'codigo'    => $factura->tipoPago->codigo,
                     'montoPago' => $totalPagar,
                     'referencia' => null,
-                    'plazo'      => $factura->idPlazo,
-                    'periodo'   => $factura->diasCredito,
+                    'plazo'      => $factura->tipoPlazo->codigo ?? null,
+                    'periodo'   => $factura->diasCredito ?? null,
                 ]],
                 'numPagoElectronico' => null
             ]
